@@ -1,0 +1,229 @@
+import { Browser, Page } from "puppeteer";
+import { delay } from "../common/delay.js";
+
+async function login(
+  browser: Browser,
+  page: Page,
+  email: string,
+  password: string
+) {
+  await page.evaluate(() => {
+    window.scrollBy(0, 200);
+  });
+  // Wait for email input
+  await page.waitForSelector("#emailControl");
+
+  // Type email slowly, character by character
+  for (let char of email) {
+    await page.type("#emailControl", char, { delay: 100 });
+  }
+
+  // Click continue button
+  await page.click("#continueButton");
+
+  // Wait before entering password
+  console.log("Waiting for password page to load...");
+
+  // Wait for password page to be fully loaded
+  try {
+    console.log("Waiting for password page to fully load...");
+
+    // Try to find the password input field with a try-catch to handle both possible selectors
+    let passwordInputFound = false;
+
+    try {
+      // First try to find #password-input
+      const passwordInput = await page.waitForSelector("#password-input", {
+        visible: true,
+        timeout: 15000, // Shorter timeout for first attempt
+      });
+
+      if (passwordInput) {
+        passwordInputFound = true;
+
+        // Add a significant delay to ensure the page is fully loaded and stable
+        await delay(3000);
+
+        // Verify the password field is actually ready for input
+        const isInputReady = await page.evaluate(() => {
+          const input = document.querySelector(
+            "#password-input"
+          ) as HTMLInputElement;
+          return input && !input.disabled && document.activeElement !== input;
+        });
+
+        if (!isInputReady) {
+          console.log("Password input not fully ready, waiting longer...");
+          await delay(2000);
+        }
+
+        // Click on the password field first to ensure focus
+        await page.click("#password-input");
+        await delay(1000);
+
+        // Clear the field in case there's any text
+        await page.evaluate(() => {
+          const input = document.querySelector(
+            "#password-input"
+          ) as HTMLInputElement;
+          if (input) input.value = "";
+        });
+        await delay(500);
+
+        console.log("Password page fully loaded, entering password...");
+
+        // Type password slowly with increased delays
+        for (let char of password) {
+          await page.type("#password-input", char, { delay: 150 }); // Increased delay
+          await delay(100); // Increased delay between characters
+        }
+
+        // Wait longer before clicking submit to ensure password is fully entered
+        console.log("Password entered, waiting before clicking submit...");
+        await delay(5000);
+
+        // Verify password was entered correctly
+        const enteredPassword = await page.evaluate(() => {
+          const input = document.querySelector(
+            "#password-input"
+          ) as HTMLInputElement;
+          return input ? input.value : "";
+        });
+
+        if (enteredPassword.length !== password.length) {
+          console.log(
+            `Password entry issue: expected ${password.length} chars but got ${enteredPassword.length}`
+          );
+
+          // Re-enter password if needed
+          await page.evaluate(() => {
+            const input = document.querySelector(
+              "#password-input"
+            ) as HTMLInputElement;
+            if (input) input.value = "";
+          });
+          await delay(1000);
+
+          // Try again with even slower typing
+          for (let char of password) {
+            await page.type("#password-input", char, { delay: 200 });
+            await delay(150);
+          }
+          await delay(2000);
+        }
+
+        // Click the login button
+        console.log("Clicking password continue button...");
+        await page.click("#password-continue");
+      }
+    } catch (error: any) {
+      console.log(
+        "Could not find #password-input, trying #passwordControl instead:",
+        error.message
+      );
+      passwordInputFound = false;
+    }
+
+    // If #password-input wasn't found, try #passwordControl
+    if (!passwordInputFound) {
+      try {
+        // Check if #passwordControl exists
+        const passwordControlExists = await page.evaluate(() => {
+          return !!document.querySelector("#passwordControl");
+        });
+
+        if (!passwordControlExists) {
+          console.log(
+            "Neither #password-input nor #passwordControl found. Checking page content..."
+          );
+          const pageContent = await page.content();
+          console.log("Page title: " + (await page.title()));
+          throw new Error("Password input field not found on the page");
+        }
+
+        // Add a significant delay to ensure the page is fully loaded and stable
+        await delay(3000);
+
+        // Verify the password field is actually ready for input
+        const isInputReady = await page.evaluate(() => {
+          const input = document.querySelector(
+            "#passwordControl"
+          ) as HTMLInputElement;
+          return input && !input.disabled && document.activeElement !== input;
+        });
+
+        if (!isInputReady) {
+          console.log("Password input not fully ready, waiting longer...");
+          await delay(2000);
+        }
+
+        // Click on the password field first to ensure focus
+        await page.click("#passwordControl");
+        await delay(1000);
+
+        // Clear the field in case there's any text
+        await page.evaluate(() => {
+          const input = document.querySelector(
+            "#passwordControl"
+          ) as HTMLInputElement;
+          if (input) input.value = "";
+        });
+        await delay(500);
+
+        console.log("Password page fully loaded, entering password...");
+
+        // Type password slowly with increased delays
+        for (let char of password) {
+          await page.type("#passwordControl", char, { delay: 150 }); // Increased delay
+          await delay(100); // Increased delay between characters
+        }
+
+        // Wait longer before clicking submit to ensure password is fully entered
+        console.log("Password entered, waiting before clicking submit...");
+        await delay(5000);
+
+        // Verify password was entered correctly
+        const enteredPassword = await page.evaluate(() => {
+          const input = document.querySelector(
+            "#passwordControl"
+          ) as HTMLInputElement;
+          return input ? input.value : "";
+        });
+
+        if (enteredPassword.length !== password.length) {
+          console.log(
+            `Password entry issue: expected ${password.length} chars but got ${enteredPassword.length}`
+          );
+
+          // Re-enter password if needed
+          await page.evaluate(() => {
+            const input = document.querySelector(
+              "#passwordControl"
+            ) as HTMLInputElement;
+            if (input) input.value = "";
+          });
+          await delay(1000);
+
+          // Try again with even slower typing
+          for (let char of password) {
+            await page.type("#passwordControl", char, { delay: 200 });
+            await delay(150);
+          }
+          await delay(2000);
+        }
+
+        // Click the login button
+        console.log("Clicking password continue button...");
+        await page.click("#signInButton");
+      } catch (error: any) {
+        console.log("Error handling password input:", error.message);
+        throw error;
+      }
+    }
+  } catch (error: any) {
+    console.log("Error during password entry:", error.message);
+    throw error;
+  }
+}
+
+export default login;

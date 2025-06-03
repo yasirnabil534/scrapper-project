@@ -1,27 +1,48 @@
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-import app from './app/app';
+import { browserSetup } from "./browser-setup/browser.js";
+import login from "./login/login.js";
+import dotenv from "dotenv";
+import handleOtpVerification from "./otp-verification/otp-verification.js";
+import { delay } from "./common/delay.js";
+dotenv.config();
 
-const port = process.env.PORT || 3000;
-
-// * MongoDB connection function
-const connectDB = async () => {
+async function main(): Promise<void> {
   try {
-    await mongoose.connect(process.env.DB_URI || '3000');
-    console.log('Connected to DB server');
-  } catch (err) {
-    console.log(`DB error for error ${err}`);
-    throw err;
-  }
-};
+    // Step 1: Setup browser and navigate to login page
+    console.log("Setting up browser...");
+    const { browser, page } = await browserSetup();
+    console.log("Browser setup complete. Page is ready at login screen.");
 
-// * Server listening port functionality
-app.listen(port, async () => {
-  try {
-    await connectDB();
-    console.log(`Server is listening on port ${port}`);
-  } catch (err) {
-    console.log('Server cannot be connected because of the error:');
-    console.log(err);
+    // Step 2: Check if login credentials are provided
+    const email = process.env.EXPEDIA_EMAIL;
+    const password = process.env.EXPEDIA_PASSWORD;
+
+    if (email && password) {
+      console.log("Login credentials found, performing automatic login...");
+
+      try {
+        await login(browser, page, email, password);
+        console.log("Login completed successfully! User is now logged in.");
+
+        // Add your post-login automation here
+        console.log("Ready for scraping operations...");
+        await delay(10000);
+      } catch (loginError) {
+        console.error("Login failed:", loginError);
+      }
+
+      try {
+        await handleOtpVerification(page);
+        console.log("OTP verification completed successfully!");
+      } catch (error: any) {
+        console.error("OTP verification failed:", error);
+      }
+    } else {
+      console.log("No login credentials provided.");
+      
+    }
+  } catch (error) {
+    console.error("Main function error:", error);
   }
-});
+}
+
+export default main;

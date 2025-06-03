@@ -2,9 +2,13 @@
   "name": "scrapper-project",
   "version": "1.0.0",
   "description": "",
-  "main": "src/main.js",
+  "main": "src/index.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon --exec \"node --loader ts-node/esm\" src/index.ts",
+    "start": "node --loader ts-node/esm src/index.ts",
+    "build": "tsc",
+    "build:start": "npm run build && node dist/index.js"
   },
   "repository": {
     "type": "git",
@@ -13,7 +17,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "bugs": {
     "url": "https://github.com/yasirnabil534/scrapper-project/issues"
   },
