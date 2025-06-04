@@ -1,11 +1,13 @@
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
 import { setDateRange } from "./helper.js";
+import { scrapeData } from "../scrape-data/scrape-data.js";
 
 export async function applyFilter(
   page: Page,
   startDate: string,
-  endDate: string
+  endDate: string,
+  propertyId: string
 ) {
   try {
     // Click the "Checking out" radio button
@@ -226,8 +228,12 @@ export async function applyFilter(
       timeout: 30000,
     });
 
-    console.log(`Final reservation count: ${finalCount}`);
-    
+    try {
+      await scrapeData(page, propertyId, startDate, endDate);
+    } catch (error: any) {
+      console.error("Error in applyFilter:", error);
+      throw error;
+    }
   } catch (error: any) {
     console.error("Error in applyFilter:", error);
     throw error;

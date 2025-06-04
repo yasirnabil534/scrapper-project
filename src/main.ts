@@ -59,11 +59,11 @@ async function main(
         console.log("No property ID provided, skipping property search.");
       }
       try {
-        if (startDate && endDate) {
-          await splitDateRange(page, startDate, endDate);
+        if (startDate && endDate && propertyId) {
+          await splitDateRange(page, startDate, endDate, propertyId);
         } else {
           console.log(
-            "No start date or end date provided, skipping date selection."
+            "No start date or end date, or property ID provided, skipping date selection."
           );
         }
         console.log("Date selection completed successfully!");

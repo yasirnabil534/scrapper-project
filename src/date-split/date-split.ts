@@ -9,7 +9,8 @@ const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE || "2", 10);
 export async function splitDateRange(
   page: Page,
   start_date: string,
-  end_date: string
+  end_date: string,
+  propertyId: string
 ) {
   try {
     // Wait for date filters to be visible
@@ -31,7 +32,7 @@ export async function splitDateRange(
 
     for (const chunk of dateChunks) {
       console.log(`Processing chunk: ${chunk.start} to ${chunk.end}`);
-      await applyFilter(page, chunk.start, chunk.end);
+      await applyFilter(page, chunk.start, chunk.end, propertyId);
     }
   } catch (error) {
     console.error("Error in setDateRange:", error);
