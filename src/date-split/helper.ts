@@ -1,6 +1,17 @@
-import { Page } from "puppeteer";
+import dotenv from "dotenv";
 
-export function splitDateRangeIntoChunks(start_date: string, end_date: string, chunkSize = 2) {
+dotenv.config();
+
+export function splitDateRangeIntoChunks(
+  start_date: string,
+  end_date: string,
+  chunkSize: number
+) {
+  // Debug: Log the environment variable and parsed chunk size
+  console.log("🔍 Debug Info:");
+  console.log("Raw CHUNK_SIZE from env:", process.env.CHUNK_SIZE);
+  console.log("Parsed chunkSize:", chunkSize);
+
   // Parse dates correctly regardless of MM/DD/YYYY or DD/MM/YYYY format
   const parseDate = (dateStr: string) => {
     // Check if the date is in MM/DD/YYYY format (our internal format)
@@ -78,10 +89,11 @@ export function splitDateRangeIntoChunks(start_date: string, end_date: string, c
     currentDate.setDate(currentDate.getDate() + 1);
   }
 
+  console.log("📊 Final chunks:", dateChunks);
   return dateChunks;
 }
 
-const formatDateForProcessing = (dateStr: string) => {
+export const formatDateForProcessing = (dateStr: string) => {
   // Input is in MM/DD/YYYY format (our internal format)
   const [month, day, year] = dateStr.split("/");
   // Parse date using reliable YYYY-MM-DD format
@@ -89,44 +101,18 @@ const formatDateForProcessing = (dateStr: string) => {
     `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
   );
   const formattedDay = date.getDate().toString().padStart(2, "0");
-  const formattedMonth = (date.getMonth() + 1)
-    .toString()
-    .padStart(2, "0");
+  const formattedMonth = (date.getMonth() + 1).toString().padStart(2, "0");
   const formattedYear = date.getFullYear();
   // Return in DD/MM/YYYY format as expected by Expedia's interface
   return `${formattedDay}/${formattedMonth}/${formattedYear}`;
 };
 
-const formatDateForUrl = (dateStr: string) => {
+export const formatDateForUrl = (dateStr: string) => {
   // Convert MM/DD/YYYY to a format JavaScript can parse correctly
   const [month, day, year] = dateStr.split("/");
   const date = new Date(`${year}-${month}-${day}`);
   const formattedYear = date.getFullYear();
-  const formattedMonth = (date.getMonth() + 1)
-    .toString()
-    .padStart(2, "0");
+  const formattedMonth = (date.getMonth() + 1).toString().padStart(2, "0");
   const formattedDay = date.getDate().toString().padStart(2, "0");
   return `${formattedYear}-${formattedMonth}-${formattedDay}`;
 };
-
-
-export async function setDateRange(page: Page, start_date: string, end_date: string) {
-  try {
-    // Wait for date filters to be visible
-    console.log("Waiting for date filters...");
-    await page.waitForSelector('input[type="radio"][name="dateTypeFilter"]', {
-      visible: true,
-      timeout: 80000,
-    });
-    // Get the current URL
-    const currentUrl = page.url();
-    console.log(`Current tab URL: ${currentUrl}`);
-
-    // Generate date chunks
-    const dateChunks = splitDateRangeIntoChunks(start_date, end_date, 2);
-    console.log("Date Chunks:", dateChunks);
-
-  } catch (error) {
-    
-  }
-}

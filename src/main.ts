@@ -4,10 +4,14 @@ import { delay } from "./common/delay.js";
 import login from "./login/login.js";
 import handleOtpVerification from "./otp-verification/otp-verification.js";
 import { propertySearchAndClickReservation } from "./property-search/property-search.js";
-import {setDateRange} from "./date-range/date-range.js"
+import { setDateRange } from "./date-split/date-split.js";
 dotenv.config();
 
-async function main(propertyId?: string, startDate?: string, endDate?: string): Promise<void> {
+async function main(
+  propertyId?: string,
+  startDate?: string,
+  endDate?: string
+): Promise<void> {
   try {
     // Step 1: Setup browser and navigate to login page
     console.log("Setting up browser...");
@@ -53,14 +57,18 @@ async function main(propertyId?: string, startDate?: string, endDate?: string): 
       } else {
         console.log("No property ID provided, skipping property search.");
       }
-      if (startDate && endDate) {
-        try {
-          console.log(`Starting date range: ${startDate} to ${endDate}`);
+      try {
+        if (startDate && endDate) {
           await setDateRange(page, startDate, endDate);
-        } catch (error: any) {
-          console.error("Date range setting failed:", error);
-          throw error;
+        } else {
+          console.log(
+            "No start date or end date provided, skipping date selection."
+          );
         }
+        console.log("Date selection completed successfully!");
+      } catch (error: any) {
+        console.error("Date selection failed:", error);
+        throw error;
       }
     } else {
       console.log("No login credentials provided.");
