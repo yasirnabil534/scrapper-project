@@ -4,7 +4,8 @@ import { delay } from "./common/delay.js";
 import login from "./login/login.js";
 import handleOtpVerification from "./otp-verification/otp-verification.js";
 import { propertySearchAndClickReservation } from "./property-search/property-search.js";
-import { setDateRange } from "./date-split/date-split.js";
+import { splitDateRange } from "./date-split/date-split.js";
+
 dotenv.config();
 
 async function main(
@@ -58,11 +59,11 @@ async function main(
         console.log("No property ID provided, skipping property search.");
       }
       try {
-        if (startDate && endDate) {
-          await setDateRange(page, startDate, endDate);
+        if (startDate && endDate && propertyId) {
+          await splitDateRange(page, startDate, endDate, propertyId);
         } else {
           console.log(
-            "No start date or end date provided, skipping date selection."
+            "No start date or end date, or property ID provided, skipping date selection."
           );
         }
         console.log("Date selection completed successfully!");

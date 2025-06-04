@@ -1,14 +1,16 @@
 import dotenv from "dotenv";
 import { Page } from "puppeteer";
 import { splitDateRangeIntoChunks } from "./helper.js";
+import { applyFilter } from "../apply-filter/apply-filter.js";
 dotenv.config();
 
 const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE || "2", 10);
 
-export async function setDateRange(
+export async function splitDateRange(
   page: Page,
   start_date: string,
-  end_date: string
+  end_date: string,
+  propertyId: string
 ) {
   try {
     // Wait for date filters to be visible
@@ -27,10 +29,10 @@ export async function setDateRange(
       end_date,
       CHUNK_SIZE
     );
-    console.log("Date Chunks:", dateChunks);
 
     for (const chunk of dateChunks) {
       console.log(`Processing chunk: ${chunk.start} to ${chunk.end}`);
+      await applyFilter(page, chunk.start, chunk.end, propertyId);
     }
   } catch (error) {
     console.error("Error in setDateRange:", error);
