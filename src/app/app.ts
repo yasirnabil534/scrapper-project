@@ -39,7 +39,44 @@ app.get("/", (req, res, next) => {
 // ~ Router starts here
 app.get("/auth", getAccess as any);
 app.get("/oauth2callback", getOauth2Callback as any);
-app.get("/api/expedia", main);
+app.get("/api/expedia", (async (
+  req: express.Request,
+  res: express.Response
+) => {
+  try {
+    const propertyId = req.query.propertyId as string | undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    if (!propertyId) {
+      return res.status(400).json({
+        status: 400,
+        message: "propertyId query parameter is required",
+      });
+    }
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        status: 400,
+        message: "startDate and endDate query parameters are required",
+      });
+    }
+
+    // Call main function with property ID
+    await main(propertyId, startDate, endDate);
+
+    res.status(200).json({
+      status: 200,
+      message: "Property search completed successfully",
+      propertyId: propertyId,
+    });
+  } catch (err: any) {
+    console.error("Error in /api/expedia:", err);
+    res.status(500).json({
+      status: 500,
+      message: "Error processing property search",
+      error: err.message,
+    });
+  }
+}) as any);
 
 // * GLobal error handle middleware
 app.use((err: any, req: any, res: any, next: any) => {

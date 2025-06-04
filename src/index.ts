@@ -4,6 +4,7 @@ import loadToken from "./common/load-token.js";
 import dotenv from "dotenv";
 import app from "./app/app.js";
 dotenv.config();
+import open from "open";
 
 
 const port: number = parseInt(process.env.PORT || "3000");
