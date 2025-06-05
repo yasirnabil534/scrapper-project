@@ -4,6 +4,7 @@ import express from "express";
 import createError from "../common/error.js";
 import { getAccess, getOauth2Callback } from "../get-access/access.js";
 import main from "../main.js";
+import reservation from "../reservation/reservation.js";
 
 const app = express();
 
@@ -39,7 +40,7 @@ app.get("/", (req, res, next) => {
 // ~ Router starts here
 app.get("/auth", getAccess as any);
 app.get("/oauth2callback", getOauth2Callback as any);
-app.get("/api/expedia", (async (
+app.get("/api/expedia/property-run-job", (async (
   req: express.Request,
   res: express.Response
 ) => {
@@ -70,6 +71,35 @@ app.get("/api/expedia", (async (
     });
   } catch (err: any) {
     console.error("Error in /api/expedia:", err);
+    res.status(500).json({
+      status: 500,
+      message: "Error processing property search",
+      error: err.message,
+    });
+  }
+}) as any);
+
+app.post("/api/expedia/reservation-run-job", (async (
+  req: express.Request,
+  res: express.Response
+) => {
+  try {
+    const reservations = req.body.reservations as any[];
+    if (!reservations || reservations.length === 0) {
+      return res.status(400).json({
+        status: 400,
+        message: "reservations array is required",
+      });
+    }
+    await reservation(reservations);
+
+    res.status(200).json({
+      status: 200,
+      message: "Reservation search completed successfully",
+      reservations: reservations,
+    });
+  } catch (err: any) {
+    console.error("Error in /api/expedia/retry:", err);
     res.status(500).json({
       status: 500,
       message: "Error processing property search",
