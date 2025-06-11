@@ -1,5 +1,6 @@
 import { Browser, Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+import { scrapingStateManager } from "../common/scraping-state.js";
 
 async function login(
   browser: Browser,
@@ -7,13 +8,26 @@ async function login(
   email: string,
   password: string
 ) {
+  // Check if scraping is paused before starting login
+  await scrapingStateManager.waitWhilePaused();
+  if (!scrapingStateManager.isRunning()) {
+    throw new Error("Scraping was stopped during login");
+  }
+
   await page.evaluate(() => {
     window.scrollBy(0, 200);
   });
   // Wait for email input
   await page.waitForSelector("#emailControl");
 
+  // Check pause state before entering email
+  await scrapingStateManager.waitWhilePaused();
+  if (!scrapingStateManager.isRunning()) {
+    throw new Error("Scraping was stopped during login");
+  }
+
   // Type email slowly, character by character
+  console.log("Entering email...");
   for (let char of email) {
     await page.type("#emailControl", char, { delay: 100 });
   }
@@ -23,6 +37,12 @@ async function login(
 
   // Wait before entering password
   console.log("Waiting for password page to load...");
+
+  // Check pause state before password entry
+  await scrapingStateManager.waitWhilePaused();
+  if (!scrapingStateManager.isRunning()) {
+    throw new Error("Scraping was stopped during login");
+  }
 
   // Wait for password page to be fully loaded
   try {

@@ -1,17 +1,30 @@
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+import { scrapingStateManager } from "../common/scraping-state.js";
 
 export async function propertySearchAndClickReservation(
   page: Page,
   propertyId: string
 ): Promise<void> {
   try {
+    // Check if scraping is paused before starting
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped during property search");
+    }
+
     if (propertyId) {
       // Wait for property table to load
       await page.waitForSelector(".fds-data-table-wrapper", {
         visible: true,
         timeout: 30000,
       });
+
+      // Check pause state before proceeding
+      await scrapingStateManager.waitWhilePaused();
+      if (!scrapingStateManager.isRunning()) {
+        throw new Error("Scraping was stopped during property search");
+      }
 
       // Wait for property search input
       await page.waitForSelector(
@@ -30,6 +43,12 @@ export async function propertySearchAndClickReservation(
 
       // Wait for search results
       await delay(2000);
+
+      // Check pause state before searching
+      await scrapingStateManager.waitWhilePaused();
+      if (!scrapingStateManager.isRunning()) {
+        throw new Error("Scraping was stopped during property search");
+      }
 
       // Find and click the property link with more specific selector
       try {
@@ -78,6 +97,13 @@ export async function propertySearchAndClickReservation(
         throw error;
       }
     }
+
+    // Check pause state before finding reservations
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped during property search");
+    }
+
     // Find and click the Reservations link
     console.log("Looking for Reservations link...");
 

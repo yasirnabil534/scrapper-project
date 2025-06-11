@@ -1,5 +1,7 @@
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+import { scrapingStateManager } from "../common/scraping-state.js";
+
 const pageReservations: any[] = [];
 const processedReservationIds = new Set();
 
@@ -33,11 +35,33 @@ export async function scrapeData(
     const totalResults = await getTotalResults();
     console.log(`Total reservations to fetch: ${totalResults}`);
 
+    // Update progress with total count
+    scrapingStateManager.updateProgress(undefined, undefined, 0, totalResults);
+
     let currentPage = 1;
     let hasMore = true;
+    let processedCount = 0;
+
     while (hasMore) {
       try {
+        // Check if scraping is paused and wait if needed
+        await scrapingStateManager.waitWhilePaused();
+
+        // Check if scraping was stopped while paused
+        if (!scrapingStateManager.isRunning()) {
+          console.log("Scraping was stopped, exiting...");
+          break;
+        }
+
         console.log(`Processing page ${currentPage}...`);
+
+        // Update progress with current page
+        scrapingStateManager.updateProgress(
+          currentPage,
+          undefined,
+          processedCount,
+          totalResults
+        );
 
         // Wait for table data to load
         await page.waitForSelector("table.fds-data-table tbody tr", {
@@ -50,6 +74,15 @@ export async function scrapeData(
         const rows = await page.$$("table.fds-data-table tbody tr");
 
         for (const row of rows) {
+          // Check if scraping is paused before processing each row
+          await scrapingStateManager.waitWhilePaused();
+
+          // Check if scraping was stopped while paused
+          if (!scrapingStateManager.isRunning()) {
+            console.log("Scraping was stopped, exiting...");
+            return;
+          }
+
           let basicData: any = null;
           let cardData = null;
           let paymentData = null;
@@ -106,6 +139,19 @@ export async function scrapeData(
 
             // Add to processed set
             processedReservationIds.add(basicData.reservationId);
+            processedCount++;
+
+            // Update progress count
+            scrapingStateManager.updateProgress(
+              currentPage,
+              undefined,
+              processedCount,
+              totalResults
+            );
+
+            console.log(
+              `Processing reservation ${processedCount}/${totalResults}: ${basicData.reservationId}`
+            );
 
             // Get card details
             const guestNameButton = await row.$(

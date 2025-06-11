@@ -1,7 +1,8 @@
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
-import { setDateRange } from "./helper.js";
+import { scrapingStateManager } from "../common/scraping-state.js";
 import { scrapeData } from "../scrape-data/scrape-data.js";
+import { setDateRange } from "./helper.js";
 
 export async function applyFilter(
   page: Page,
@@ -10,6 +11,12 @@ export async function applyFilter(
   propertyId: string
 ) {
   try {
+    // Check if scraping is paused before starting
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped during filter application");
+    }
+
     // Click the "Checking out" radio button
     console.log('Selecting "Checking out" filter...');
     await page.evaluate(() => {
@@ -31,10 +38,22 @@ export async function applyFilter(
     // Wait for radio button click to take effect
     await delay(2000);
 
+    // Check pause state before setting date range
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped during filter application");
+    }
+
     // Set the date range
     console.log(`Processing date range: ${startDate} to ${endDate}`);
     const dateValues = await setDateRange(page, startDate, endDate);
     console.log("Set dates:", dateValues);
+
+    // Check pause state before applying more filters
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped during filter application");
+    }
 
     //wait for the more filter button
     console.log("Waiting for the More filters button...");
@@ -169,7 +188,12 @@ export async function applyFilter(
 
     console.log("Loading completed, continuing with data processing...");
 
-    // Then continue with your existing code for processing the data...
+    // Check pause state before data processing
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped before data processing");
+    }
+
     console.log("Starting to process reservation data...");
 
     // Wait for the table to be visible
@@ -184,6 +208,12 @@ export async function applyFilter(
     const maxAttempts = 15; // Increased max attempts
 
     while (attempts < maxAttempts) {
+      // Check pause state during data stabilization
+      await scrapingStateManager.waitWhilePaused();
+      if (!scrapingStateManager.isRunning()) {
+        throw new Error("Scraping was stopped during data stabilization");
+      }
+
       await delay(2000);
 
       const currentCount = await page.evaluate(() => {
@@ -212,10 +242,16 @@ export async function applyFilter(
 
     if (finalCount === 0) {
       console.log("No reservations found after multiple attempts");
-      return [];
+      return;
     }
 
-    // After date range is applied and before scraping data
+    // Check pause state before setting pagination
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped before pagination setup");
+    }
+
+    // Set results per page to 100
     console.log("Setting results per page to 100...");
     await page.waitForSelector(".fds-pagination-selector select");
     await page.click(".fds-pagination-selector select");
@@ -228,12 +264,14 @@ export async function applyFilter(
       timeout: 30000,
     });
 
-    try {
-      await scrapeData(page, propertyId, startDate, endDate);
-    } catch (error: any) {
-      console.error("Error in applyFilter:", error);
-      throw error;
+    // Final pause check before scraping
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped before data scraping");
     }
+
+    console.log("Starting data scraping...");
+    await scrapeData(page, propertyId, startDate, endDate);
   } catch (error: any) {
     console.error("Error in applyFilter:", error);
     throw error;
