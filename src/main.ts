@@ -1,10 +1,11 @@
 import dotenv from "dotenv";
 import { browserSetup } from "./browser-setup/browser.js";
 import { delay } from "./common/delay.js";
+import { scrapingStateManager } from "./common/scraping-state.js";
+import { splitDateRange } from "./date-split/date-split.js";
 import login from "./login/login.js";
 import handleOtpVerification from "./otp-verification/otp-verification.js";
 import { propertySearchAndClickReservation } from "./property-search/property-search.js";
-import { splitDateRange } from "./date-split/date-split.js";
 
 dotenv.config();
 
@@ -19,6 +20,16 @@ async function main(
     const { browser, page } = await browserSetup();
     console.log("Browser setup complete. Page is ready at login screen.");
 
+    // Check if scraping is paused and wait if needed
+    await scrapingStateManager.waitWhilePaused();
+
+    // Check if scraping was stopped while paused
+    if (!scrapingStateManager.isRunning()) {
+      console.log("Scraping was stopped, exiting...");
+      await browser.close();
+      return;
+    }
+
     // Step 2: Check if login credentials are provided
     const email = process.env.EXPEDIA_EMAIL;
     const password = process.env.EXPEDIA_PASSWORD;
@@ -27,6 +38,14 @@ async function main(
       console.log("Login credentials found, performing automatic login...");
 
       try {
+        // Check pause state before login
+        await scrapingStateManager.waitWhilePaused();
+        if (!scrapingStateManager.isRunning()) {
+          console.log("Scraping was stopped, exiting...");
+          await browser.close();
+          return;
+        }
+
         await login(browser, page, email, password);
         console.log("Login completed successfully! User is now logged in.");
 
@@ -35,17 +54,36 @@ async function main(
         await delay(10000);
       } catch (loginError) {
         console.error("Login failed:", loginError);
+        throw loginError;
       }
 
       try {
+        // Check pause state before OTP verification
+        await scrapingStateManager.waitWhilePaused();
+        if (!scrapingStateManager.isRunning()) {
+          console.log("Scraping was stopped, exiting...");
+          await browser.close();
+          return;
+        }
+
         await handleOtpVerification(page);
         console.log("OTP verification completed successfully!");
       } catch (error: any) {
         console.error("OTP verification failed:", error);
+        // Continue even if OTP fails as it might not be required
       }
+
       // Step 3: Perform property search with the provided property ID
       if (propertyId) {
         try {
+          // Check pause state before property search
+          await scrapingStateManager.waitWhilePaused();
+          if (!scrapingStateManager.isRunning()) {
+            console.log("Scraping was stopped, exiting...");
+            await browser.close();
+            return;
+          }
+
           console.log(`Starting property search for ID: ${propertyId}`);
           await propertySearchAndClickReservation(page, propertyId);
           console.log(
@@ -58,8 +96,17 @@ async function main(
       } else {
         console.log("No property ID provided, skipping property search.");
       }
+
       try {
         if (startDate && endDate && propertyId) {
+          // Check pause state before date splitting
+          await scrapingStateManager.waitWhilePaused();
+          if (!scrapingStateManager.isRunning()) {
+            console.log("Scraping was stopped, exiting...");
+            await browser.close();
+            return;
+          }
+
           await splitDateRange(page, startDate, endDate, propertyId);
         } else {
           console.log(
@@ -74,6 +121,10 @@ async function main(
     } else {
       console.log("No login credentials provided.");
     }
+
+    // Close browser when done
+    await browser.close();
+    console.log("Browser closed successfully.");
   } catch (error) {
     console.error("Main function error:", error);
     throw error;

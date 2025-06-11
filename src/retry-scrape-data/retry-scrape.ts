@@ -1,5 +1,6 @@
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+import { scrapingStateManager } from "../common/scraping-state.js";
 import { scrapeData } from "../scrape-data/scrape-data.js";
 
 export async function retryScrape(
@@ -8,11 +9,23 @@ export async function retryScrape(
   reservationId: string
 ) {
   try {
+    // Check if scraping is paused before starting
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped during retry scrape");
+    }
+
     // Wait for the page to be fully loaded
     await page.waitForSelector(".fds-layout", {
       visible: true,
       timeout: 30000,
     });
+
+    // Check pause state before searching
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped during retry scrape");
+    }
 
     // Try to find the search input using multiple possible selectors
     const searchInputSelectors = [
@@ -62,12 +75,21 @@ export async function retryScrape(
       timeout: 10000,
     });
 
+    // Check pause state before scraping
+    await scrapingStateManager.waitWhilePaused();
+    if (!scrapingStateManager.isRunning()) {
+      throw new Error("Scraping was stopped during retry scrape");
+    }
+
     // Click the save button
     await page.click("#save-button");
     // Wait for the search to complete
     await delay(2000);
+
+    console.log(`Starting retry scrape for reservation: ${reservationId}`);
     await scrapeData(page, propertyId);
   } catch (error: any) {
     console.error("Error in retryScrape:", error);
+    throw error;
   }
 }
