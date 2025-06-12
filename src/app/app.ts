@@ -6,7 +6,9 @@ import { scrapingStateManager } from "../common/scraping-state.js";
 import { specs, swaggerUi } from "../config/swagger.js";
 import { getAccess, getOauth2Callback } from "../get-access/access.js";
 import main from "../main.js";
+import { JobStatus } from "../models/job.model.js";
 import reservation from "../reservation/reservation.js";
+import { jobService } from "../services/job.service.js";
 
 const app = express();
 
@@ -396,38 +398,37 @@ app.post(
 /**
  * @swagger
  * /api/expedia/property-run-job:
- *   get:
+ *   post:
  *     tags:
  *       - Scraping Jobs
  *     summary: Start property scraping job
- *     description: Start a new property scraping job for the specified property ID and date range
- *     parameters:
- *       - in: query
- *         name: propertyId
- *         required: true
- *         schema:
- *           type: string
- *         description: The property ID to scrape
- *         example: "12345"
- *       - in: query
- *         name: startDate
- *         required: true
- *         schema:
- *           type: string
- *           format: date
- *         description: Start date for scraping (YYYY-MM-DD)
- *         example: "2024-01-01"
- *       - in: query
- *         name: endDate
- *         required: true
- *         schema:
- *           type: string
- *           format: date
- *         description: End date for scraping (YYYY-MM-DD)
- *         example: "2024-01-31"
+ *     description: Start a new property scraping job for the specified property ID, date range, and job ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - startDate
+ *               - endDate
+ *               - jobId
+ *             properties:
+ *               startDate:
+ *                 type: string
+ *                 description: Start date for scraping (MM/DD/YYYY format)
+ *                 example: "01/01/2024"
+ *               endDate:
+ *                 type: string
+ *                 description: End date for scraping (MM/DD/YYYY format)
+ *                 example: "01/31/2024"
+ *               jobId:
+ *                 type: string
+ *                 description: MongoDB ObjectId of the job to run. The job's property must have a valid expedia_id (not "0")
+ *                 example: "507f1f77bcf86cd799439011"
  *     responses:
  *       200:
- *         description: Property scraping job started successfully
+ *         description: Property scraping job completed successfully
  *         content:
  *           application/json:
  *             schema:
@@ -446,7 +447,7 @@ app.post(
  *                   type: string
  *                   example: "job_12345_1703123456789"
  *       400:
- *         description: Missing required parameters
+ *         description: Missing required parameters in request body
  *         content:
  *           application/json:
  *             schema:
@@ -457,7 +458,10 @@ app.post(
  *                   example: 400
  *                 message:
  *                   type: string
- *                   example: "propertyId query parameter is required"
+ *                   example: "startDate and endDate are required in request body"
+ *                   enum:
+ *                     - "startDate and endDate are required in request body"
+ *                     - "jobId is required in request body"
  *       409:
  *         description: Scraping job already running
  *         content:
@@ -480,57 +484,121 @@ app.post(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-app.get("/api/expedia/property-run-job", (async (
+app.post("/api/expedia/property-run-job", (async (
   req: express.Request,
   res: express.Response
 ) => {
   try {
-    const propertyId = req.query.propertyId as string | undefined;
-    const startDate = req.query.startDate as string | undefined;
-    const endDate = req.query.endDate as string | undefined;
+    const { startDate, endDate, jobId } = req.body;
 
-    if (!propertyId) {
-      return res.status(400).json({
-        status: 400,
-        message: "propertyId query parameter is required",
-      });
-    }
     if (!startDate || !endDate) {
       return res.status(400).json({
         status: 400,
-        message: "startDate and endDate query parameters are required",
+        message: "startDate and endDate are required in request body",
+      });
+    }
+    if (!jobId) {
+      return res.status(400).json({
+        status: 400,
+        message: "jobId is required in request body",
       });
     }
 
-    // Check if scraping is already running
+    // 1. Validate job exists and can be run
+    const validation = await jobService.validateJob(jobId);
+
+    if (!validation.exists) {
+      return res.status(404).json({
+        status: 404,
+        message: `Job with ID ${jobId} not found`,
+      });
+    }
+
+    if (!validation.canRun) {
+      return res.status(409).json({
+        status: 409,
+        message: `Job ${jobId} is not in a runnable state. Current status: ${validation.job?.job_status}`,
+        currentState: validation.job,
+      });
+    }
+
+    // 2. Get expedia_id from job's property
+    console.log(`Getting expedia_id for job ${jobId}...`);
+    const expediaId = await jobService.getExpediaIdFromJob(jobId);
+
+    if (!expediaId) {
+      return res.status(400).json({
+        status: 400,
+        message: `Cannot retrieve valid expedia_id for job ${jobId}. Property may not have expedia_id assigned or expedia_id is "0".`,
+      });
+    }
+
+    console.log(`Using expedia_id: ${expediaId} for scraping`);
+
+    // 3. Check if scraping is already running (legacy state manager check)
     if (scrapingStateManager.isRunning()) {
       return res.status(409).json({
         status: 409,
-        message: "Scraping job is already running",
+        message: "Another scraping job is already running",
         currentState: scrapingStateManager.getState(),
       });
     }
 
-    // Generate job ID and start scraping state
-    const jobId = `job_${propertyId}_${Date.now()}`;
-    scrapingStateManager.startScraping(propertyId, jobId, startDate, endDate);
+    // 4. Update job status to Running
+    console.log(`Starting job ${jobId}...`);
+    await jobService.startJob(jobId);
 
-    // Call main function with property ID
-    await main(propertyId, startDate, endDate);
+    // 5. Start legacy state manager (for existing pause/resume functionality)
+    scrapingStateManager.startScraping(expediaId, jobId, startDate, endDate);
 
-    // Mark scraping as completed
-    scrapingStateManager.stopScraping();
+    try {
+      // 6. Run the main scraping function with expedia_id
+      await main(expediaId, startDate, endDate, jobId);
 
-    res.status(200).json({
-      status: 200,
-      message: "Property search completed successfully",
-      propertyId: propertyId,
-      jobId: jobId,
-    });
+      // 7. Get final job statistics
+      const progress = await jobService.getJobProgress(jobId);
+
+      // 8. Determine final status based on completion
+      let finalStatus = JobStatus.Completed;
+      if (progress.totalItems === 0) {
+        finalStatus = JobStatus.Failed;
+      } else if (progress.completionPercentage < 100) {
+        finalStatus = JobStatus.Partial;
+      }
+
+      // 9. Update final job status
+      await jobService.updateJobStatus(jobId, finalStatus);
+
+      // 10. Stop legacy state manager
+      scrapingStateManager.stopScraping();
+
+      res.status(200).json({
+        status: 200,
+        message: `Property scraping ${finalStatus.toLowerCase()} successfully`,
+        expediaId: expediaId,
+        jobId: jobId,
+        progress: progress,
+        finalStatus: finalStatus,
+      });
+    } catch (scrapingError) {
+      // Mark job as failed on scraping error
+      await jobService.failJob(jobId);
+      scrapingStateManager.stopScraping();
+      throw scrapingError;
+    }
   } catch (err: any) {
-    console.error("Error in /api/expedia:", err);
-    // Mark scraping as stopped on error
-    scrapingStateManager.stopScraping();
+    console.error("Error in /api/expedia/property-run-job:", err);
+
+    // Ensure job is marked as failed and state manager is stopped
+    try {
+      if (req.body.jobId) {
+        await jobService.failJob(req.body.jobId);
+      }
+      scrapingStateManager.stopScraping();
+    } catch (cleanupError) {
+      console.error("Error during cleanup:", cleanupError);
+    }
+
     res.status(500).json({
       status: 500,
       message: "Error processing property search",
@@ -671,7 +739,226 @@ app.post("/api/expedia/reservation-run-job", (async (
   }
 }) as any);
 
-// * GLobal error handle middleware
+/**
+ * @swagger
+ * /api/jobs/{jobId}/progress:
+ *   get:
+ *     tags:
+ *       - Job Monitoring
+ *     summary: Get job progress
+ *     description: Get detailed progress information for a specific job including scraped data statistics
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The job ID to get progress for
+ *         example: "507f1f77bcf86cd799439011"
+ *     responses:
+ *       200:
+ *         description: Job progress retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: integer
+ *                   example: 200
+ *                 message:
+ *                   type: string
+ *                   example: "Job progress retrieved successfully"
+ *                 job:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                     property_name:
+ *                       type: string
+ *                     portfolio_name:
+ *                       type: string
+ *                 progress:
+ *                   type: object
+ *                   properties:
+ *                     totalItems:
+ *                       type: integer
+ *                     itemsWithCardInfo:
+ *                       type: integer
+ *                     itemsWithPaymentInfo:
+ *                       type: integer
+ *                     completionPercentage:
+ *                       type: integer
+ *       404:
+ *         description: Job not found
+ *       500:
+ *         description: Server error
+ */
+app.get("/api/jobs/:jobId/progress", (async (
+  req: express.Request,
+  res: express.Response
+) => {
+  try {
+    const { jobId } = req.params;
+
+    const job = await jobService.getJobById(jobId);
+    if (!job) {
+      return res.status(404).json({
+        status: 404,
+        message: "Job not found",
+      });
+    }
+
+    const progress = await jobService.getJobProgress(jobId);
+    const items = await jobService.getJobItems(jobId, 10); // Last 10 items
+
+    res.status(200).json({
+      status: 200,
+      message: "Job progress retrieved successfully",
+      job: {
+        id: job._id,
+        status: job.job_status,
+        property_name: job.property_name,
+        portfolio_name: job.portfolio_name,
+      },
+      progress: progress,
+      recentItems: items,
+    });
+  } catch (err: any) {
+    console.error("Error getting job progress:", err);
+    res.status(500).json({
+      status: 500,
+      message: "Error retrieving job progress",
+      error: err.message,
+    });
+  }
+}) as any);
+
+/**
+ * @swagger
+ * /api/jobs/{jobId}/items:
+ *   get:
+ *     tags:
+ *       - Job Monitoring
+ *     summary: Get job items
+ *     description: Get scraped reservation data for a specific job
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The job ID to get items for
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Maximum number of items to return
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *     responses:
+ *       200:
+ *         description: Job items retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: integer
+ *                   example: 200
+ *                 message:
+ *                   type: string
+ *                   example: "Job items retrieved successfully"
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       guest_name:
+ *                         type: string
+ *                       reservation_id:
+ *                         type: string
+ *                       confirmation_number:
+ *                         type: string
+ *                       check_in_date:
+ *                         type: string
+ *                         format: date
+ *                       check_out_date:
+ *                         type: string
+ *                         format: date
+ *                       room_type:
+ *                         type: string
+ *                       booking_amount:
+ *                         type: number
+ *                       has_card_info:
+ *                         type: boolean
+ *                       has_payment_info:
+ *                         type: boolean
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *       404:
+ *         description: Job not found
+ *       500:
+ *         description: Server error
+ */
+app.get("/api/jobs/:jobId/items", (async (
+  req: express.Request,
+  res: express.Response
+) => {
+  try {
+    const { jobId } = req.params;
+    const { limit = 50, page = 1 } = req.query;
+
+    const job = await jobService.getJobById(jobId);
+    if (!job) {
+      return res.status(404).json({
+        status: 404,
+        message: "Job not found",
+      });
+    }
+
+    const items = await jobService.getJobItems(
+      jobId,
+      parseInt(limit as string)
+    );
+    const totalCount = await jobService.getJobItemsCount(jobId);
+
+    res.status(200).json({
+      status: 200,
+      message: "Job items retrieved successfully",
+      items: items,
+      pagination: {
+        total: totalCount,
+        limit: parseInt(limit as string),
+        page: parseInt(page as string),
+      },
+    });
+  } catch (err: any) {
+    console.error("Error getting job items:", err);
+    res.status(500).json({
+      status: 500,
+      message: "Error retrieving job items",
+      error: err.message,
+    });
+  }
+}) as any);
+
+// * Global error handle middleware
 app.use((err: any, req: any, res: any, next: any) => {
   if (res.headersSent) {
     return next(err);

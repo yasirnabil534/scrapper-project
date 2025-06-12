@@ -1,17 +1,44 @@
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
 import { scrapingStateManager } from "../common/scraping-state.js";
+import { CardInfo, PaymentInfo } from "../models/job-item.model.js";
+import { CreateJobItemData, jobService } from "../services/job.service.js";
 
 const pageReservations: any[] = [];
 const processedReservationIds = new Set();
 
 export async function scrapeData(
   page: Page,
-  propertyId: string = "",
+  expediaId: string = "",
   start_date: string = "",
-  end_date: string = ""
+  end_date: string = "",
+  jobId?: string
 ) {
   try {
+    console.log(
+      `Starting scrapeData with jobId: ${jobId}, expediaId: ${expediaId}`
+    );
+
+    // Get property_id from job for database storage
+    let propertyIdForDb: string | null = null;
+    if (jobId) {
+      try {
+        const job = await jobService.getJobById(jobId);
+        if (job && job.property_id) {
+          propertyIdForDb = job.property_id.toString();
+          console.log(
+            `Using property_id: ${propertyIdForDb} for database storage`
+          );
+        } else {
+          console.warn(
+            `Could not get property_id from job ${jobId}, will skip database storage`
+          );
+        }
+      } catch (error) {
+        console.error(`Error getting property_id from job ${jobId}:`, error);
+      }
+    }
+
     // Function to get total results count
     const getTotalResults = async () => {
       const resultsText = await page.$eval(
@@ -84,11 +111,11 @@ export async function scrapeData(
           }
 
           let basicData: any = null;
-          let cardData = null;
-          let paymentData = null;
+          let cardData: CardInfo | null = null;
+          let paymentData: PaymentInfo | null = null;
           let remainingAmountToCharge = null;
           let amountToRefund = null;
-          let status = "None"; // Default status
+          let status = "Active"; // Default status
           let remainingBalance = "N/A";
 
           try {
@@ -129,11 +156,34 @@ export async function scrapeData(
               };
             }, row);
 
-            // Check if we've already processed this reservation
+            // Skip if no reservation ID
+            if (!basicData.reservationId) {
+              console.log("No reservation ID found, skipping...");
+              continue;
+            }
+
+            // Check if we've already processed this reservation in memory
             if (processedReservationIds.has(basicData.reservationId)) {
               console.log(
-                `Skipping duplicate reservation: ${basicData.reservationId}`
+                `Skipping duplicate reservation in memory: ${basicData.reservationId}`
               );
+              continue;
+            }
+
+            // Check if reservation already exists in database (only if we have valid database info)
+            if (
+              jobId &&
+              propertyIdForDb &&
+              (await jobService.reservationExists(
+                jobId,
+                basicData.reservationId
+              ))
+            ) {
+              console.log(
+                `Skipping duplicate reservation in database: ${basicData.reservationId}`
+              );
+              processedReservationIds.add(basicData.reservationId);
+              processedCount++;
               continue;
             }
 
@@ -159,8 +209,20 @@ export async function scrapeData(
             );
             if (!guestNameButton) {
               console.log("Guest name button not found, skipping reservation");
+
+              // Save basic data to database even without card info (only if we have valid database info)
+              if (jobId && propertyIdForDb) {
+                await saveReservationToDatabase(
+                  jobId,
+                  propertyIdForDb,
+                  basicData,
+                  null,
+                  null
+                );
+              }
               continue;
             }
+
             for (let i = 0; i < 3; i++) {
               try {
                 //dialog open kortesi
@@ -185,6 +247,17 @@ export async function scrapeData(
                   console.log(
                     "Dialog did not appear within timeout, skipping to next reservation"
                   );
+
+                  // Save basic data to database even without detailed info (only if we have valid database info)
+                  if (jobId && propertyIdForDb) {
+                    await saveReservationToDatabase(
+                      jobId,
+                      propertyIdForDb,
+                      basicData,
+                      null,
+                      null
+                    );
+                  }
                   continue;
                 }
 
@@ -357,58 +430,71 @@ export async function scrapeData(
                     if (hasEvcCard.exists) {
                       status = hasEvcCard.status || "None";
                       // Get card details from evcCardBase
-                      cardData = await page.evaluate((currentStatus) => {
-                        const cardNumber =
-                          document
-                            .querySelector(
-                              ".evcCardBase .cardNumber.replay-conceal bdi"
-                            )
-                            ?.textContent?.trim() || "";
-                        const expiryDate =
-                          document
-                            .querySelector(
-                              ".evcCardBase .cardDetails .fds-cell.all-cell-1-4.fds-type-color-primary.replay-conceal"
-                            )
-                            ?.textContent?.trim() || "";
-                        const cvv =
-                          document
-                            .querySelectorAll(
-                              ".evcCardBase .cardDetails .fds-cell.all-cell-1-4.fds-type-color-primary.replay-conceal"
-                            )[1]
-                            ?.textContent?.trim() || "";
+                      const rawCardData = await page.evaluate(
+                        (currentStatus) => {
+                          const cardNumber =
+                            document
+                              .querySelector(
+                                ".evcCardBase .cardNumber.replay-conceal bdi"
+                              )
+                              ?.textContent?.trim() || "";
+                          const expiryDate =
+                            document
+                              .querySelector(
+                                ".evcCardBase .cardDetails .fds-cell.all-cell-1-4.fds-type-color-primary.replay-conceal"
+                              )
+                              ?.textContent?.trim() || "";
+                          const cvv =
+                            document
+                              .querySelectorAll(
+                                ".evcCardBase .cardDetails .fds-cell.all-cell-1-4.fds-type-color-primary.replay-conceal"
+                              )[1]
+                              ?.textContent?.trim() || "";
 
-                        // Get additional text information
-                        const additionalTextElements = Array.from(
-                          document.querySelectorAll(
-                            ".fds-cell.all-y-gutter-12 div, .fds-cell.sidePanelSection, .fds-cell.fds-type-color-attention.fds-grid .fds-cell.all-cell-fill"
-                          )
-                        );
-                        const additionalText = additionalTextElements
-                          .map((el) => el.textContent?.trim() || "")
-                          .filter(
-                            (text) =>
-                              text &&
-                              !text.includes("See card activity") &&
-                              !text.includes("contact us") &&
-                              !text.includes("Show contact details")
-                          )
-                          .join(" | ");
+                          // Get additional text information
+                          const additionalTextElements = Array.from(
+                            document.querySelectorAll(
+                              ".fds-cell.all-y-gutter-12 div, .fds-cell.sidePanelSection, .fds-cell.fds-type-color-attention.fds-grid .fds-cell.all-cell-fill"
+                            )
+                          );
+                          const additionalText = additionalTextElements
+                            .map((el) => el.textContent?.trim() || "")
+                            .filter(
+                              (text) =>
+                                text &&
+                                !text.includes("See card activity") &&
+                                !text.includes("contact us") &&
+                                !text.includes("Show contact details")
+                            )
+                            .join(" | ");
 
-                        if (cardNumber) {
-                          return {
-                            cardNumber,
-                            expiryDate,
-                            cvv,
-                            status: currentStatus,
-                            additionalText,
-                          };
-                        }
-                        return null;
-                      }, status);
+                          if (cardNumber) {
+                            return {
+                              cardNumber,
+                              expiryDate,
+                              cvv,
+                              status: currentStatus,
+                              additionalText,
+                            };
+                          }
+                          return null;
+                        },
+                        status
+                      );
+
+                      // Map to CardInfo interface
+                      if (rawCardData) {
+                        cardData = {
+                          card_number: rawCardData.cardNumber,
+                          expiry_date: rawCardData.expiryDate,
+                          cvv: rawCardData.cvv,
+                          reason_for_charge: hasEvcCard.status || "None",
+                        };
+                      }
                     }
 
                     // Always try to get payment information regardless of card data
-                    paymentData = await page.evaluate(() => {
+                    const rawPaymentData = await page.evaluate(() => {
                       // Find all payment summary sections
                       const paymentSummary =
                         document.querySelector(".fds-card-content");
@@ -462,6 +548,32 @@ export async function scrapeData(
                       return null;
                     });
 
+                    // Map to PaymentInfo interface
+                    if (rawPaymentData) {
+                      // Parse string amounts to numbers
+                      const parsePaymentAmount = (
+                        amountStr: string
+                      ): number => {
+                        if (!amountStr) return 0;
+                        const cleaned = amountStr.replace(/[^\d.-]/g, "");
+                        const amount = parseFloat(cleaned);
+                        return isNaN(amount) ? 0 : amount;
+                      };
+
+                      paymentData = {
+                        total_guest_payment: parsePaymentAmount(
+                          rawPaymentData.totalGuestPayment
+                        ),
+                        cancellation_fee: parsePaymentAmount(
+                          rawPaymentData.cancellationFee
+                        ),
+                        total_payout: parsePaymentAmount(
+                          rawPaymentData.totalPayout
+                        ),
+                        amount_to_charge_or_refund: 0, // Will be updated below
+                      };
+                    }
+
                     // Extract "Remaining amount to charge" and "Amount to refund"
                     const additionalPaymentInfo = await page.evaluate(() => {
                       // Find "Remaining amount to charge"
@@ -496,10 +608,63 @@ export async function scrapeData(
                       };
                     });
 
+                    // Update payment data and card data with additional info
                     if (additionalPaymentInfo) {
                       remainingAmountToCharge =
                         additionalPaymentInfo.remainingAmountToCharge;
                       amountToRefund = additionalPaymentInfo.amountToRefund;
+
+                      // Parse amounts for payment data
+                      const parsePaymentAmount = (
+                        amountStr: string
+                      ): number => {
+                        if (!amountStr) return 0;
+                        const cleaned = amountStr.replace(/[^\d.-]/g, "");
+                        const amount = parseFloat(cleaned);
+                        return isNaN(amount) ? 0 : amount;
+                      };
+
+                      // Update payment data if it exists, or create it
+                      if (paymentData) {
+                        if (remainingAmountToCharge) {
+                          paymentData.amount_to_charge_or_refund =
+                            parsePaymentAmount(remainingAmountToCharge);
+                        } else if (amountToRefund) {
+                          paymentData.amount_to_charge_or_refund =
+                            -parsePaymentAmount(amountToRefund); // Negative for refund
+                        }
+                      } else if (remainingAmountToCharge || amountToRefund) {
+                        // Create payment data if we have charge/refund info but no other payment data
+                        paymentData = {
+                          total_guest_payment: 0,
+                          cancellation_fee: 0,
+                          total_payout: 0,
+                          amount_to_charge_or_refund: remainingAmountToCharge
+                            ? parsePaymentAmount(remainingAmountToCharge)
+                            : -parsePaymentAmount(amountToRefund),
+                        };
+                      }
+
+                      // Update card data with reason_for_charge (moved from payment data)
+                      if (cardData) {
+                        if (remainingAmountToCharge) {
+                          cardData.reason_for_charge =
+                            hasEvcCard.status || "Charged In Full";
+                        } else if (amountToRefund) {
+                          cardData.reason_for_charge =
+                            hasEvcCard.status || "Amount to refund";
+                        }
+                      } else if (
+                        (remainingAmountToCharge || amountToRefund) &&
+                        !cardData
+                      ) {
+                        // Create basic card data with reason if we have charge/refund info but no card data
+                        cardData = {
+                          card_number: "N/A",
+                          expiry_date: "N/A",
+                          reason_for_charge: hasEvcCard.status || "None",
+                        };
+                      }
 
                       if (remainingAmountToCharge) {
                         console.log(
@@ -541,101 +706,176 @@ export async function scrapeData(
                 } catch (e) {
                   console.log("Warning: Could not close dialog normally");
                 }
-                break;
-              } catch (error: any) {
-                const closeButton = await page.$(
-                  ".fds-dialog-header button.dialog-close"
-                );
-                if (closeButton) {
-                  await closeButton.click();
-                  await delay(1500);
+
+                // Save the complete reservation data to database (only if we have valid database info)
+                if (jobId && propertyIdForDb) {
+                  await saveReservationToDatabase(
+                    jobId,
+                    propertyIdForDb,
+                    basicData,
+                    cardData,
+                    paymentData
+                  );
                 }
-                console.log("did't get the data, retrying...", error.message);
+
+                break; // Exit retry loop on success
+              } catch (retryError) {
+                console.log(
+                  `Retry ${i + 1} failed for reservation ${
+                    basicData.reservationId
+                  }:`,
+                  retryError
+                );
+                if (i === 2) {
+                  // On final retry failure, still save basic data (only if we have valid database info)
+                  if (jobId && propertyIdForDb) {
+                    await saveReservationToDatabase(
+                      jobId,
+                      propertyIdForDb,
+                      basicData,
+                      null,
+                      null
+                    );
+                  }
+                }
               }
             }
-
-            // Add to reservations array with either card data or payment data
-            pageReservations.push({
-              ...basicData,
-              ...(cardData || {}),
-              ...(paymentData || {}),
-              propertyId: propertyId,
-              hasCardInfo: !!cardData,
-              hasPaymentInfo: !!paymentData,
-              remainingAmountToCharge: remainingAmountToCharge || "N/A",
-              amountToRefund: amountToRefund || "N/A",
-              amountToChargeOrRefund:
-                cardData?.additionalText ||
-                remainingAmountToCharge ||
-                amountToRefund ||
-                "N/A",
-              status: status,
-              amount: remainingBalance,
-            });
           } catch (error: any) {
-            console.log(`Error processing reservation: ${error.message}`);
-            if (basicData) {
-              pageReservations.push({
-                ...basicData,
-                cardNumber: "N/A",
-                expiryDate: "N/A",
-                cvv: "N/A",
-                remainingAmountToCharge: "N/A",
-                amountToRefund: "N/A",
-                amountToChargeOrRefund: "N/A",
-              });
+            console.error(`Error processing reservation: ${error.message}`);
+            // Still save what we have to database (only if we have valid database info)
+            if (jobId && propertyIdForDb && basicData?.reservationId) {
+              await saveReservationToDatabase(
+                jobId,
+                propertyIdForDb,
+                basicData,
+                null,
+                null
+              );
             }
           }
         }
 
-        console.log(
-          `Processed ${pageReservations.length} of ${totalResults} reservations`
-        );
-
-        // Check if there's a next page
+        // Check for next page
         hasMore = await hasNextPage();
         if (hasMore) {
-          // Scroll down smoothly before clicking next page
-          await page.evaluate(() => {
-            window.scrollBy({
-              top: 300,
-              behavior: "smooth",
-            });
-          });
-          await delay(1500); // Wait for scroll animation
-
-          const nextButton = await page.$(".fds-pagination-button.next button");
-          if (nextButton) {
-            await nextButton.click();
-            await delay(2000);
-            currentPage++;
-          }
+          console.log("Navigating to next page...");
+          await page.click(".fds-pagination-button.next button");
+          await delay(3000);
+          currentPage++;
         }
       } catch (pageError: any) {
-        console.log(
-          `Error processing page ${currentPage}: ${pageError.message}`
-        );
-        // Try to recover by reloading the page
-        await page.reload({ waitUntil: "networkidle0" });
-        await delay(5000);
+        console.error(`Error processing page ${currentPage}:`, pageError);
+        hasMore = false;
       }
     }
 
     console.log(
-      `Date scraping completed for ${start_date} to ${end_date}. Found total ${pageReservations.length} reservations on this tab`
+      `Scraping completed. Processed ${processedCount} reservations.`
     );
-
-    // Log if no reservations were found for this date range
-    if (pageReservations.length === 0) {
-      console.log(
-        `No reservations found for date range: ${start_date} to ${end_date}. This date range may be missing data.`
-      );
-    }
-    console.log("pageReservations", pageReservations);
-    console.log("processedReservationIds", processedReservationIds);
-    // return pageReservations;
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in scrapeData:", error);
     throw error;
+  }
+}
+
+// Helper function to save reservation data to database
+async function saveReservationToDatabase(
+  jobId: string,
+  propertyId: string, // This is now an ObjectId string from the job
+  basicData: any,
+  cardData: CardInfo | null,
+  paymentData: PaymentInfo | null
+) {
+  try {
+    // Validate jobId before processing
+    if (!jobId || typeof jobId !== "string") {
+      throw new Error(
+        `Invalid jobId: ${jobId}. JobId must be a non-empty string.`
+      );
+    }
+
+    if (!propertyId || typeof propertyId !== "string") {
+      throw new Error(
+        `Invalid propertyId: ${propertyId}. PropertyId must be a non-empty string.`
+      );
+    }
+
+    // Check if jobId looks like a valid ObjectId (24 character hex string)
+    if (!/^[0-9a-fA-F]{24}$/.test(jobId)) {
+      throw new Error(
+        `Invalid jobId format: ${jobId}. JobId must be a 24 character hexadecimal string (MongoDB ObjectId).`
+      );
+    }
+
+    // propertyId should also be a valid ObjectId since it comes from the job's property_id
+    if (!/^[0-9a-fA-F]{24}$/.test(propertyId)) {
+      throw new Error(
+        `Invalid propertyId format: ${propertyId}. PropertyId must be a 24 character hexadecimal string (MongoDB ObjectId).`
+      );
+    }
+
+    // Parse dates
+    const parseDate = (dateStr: string): Date => {
+      if (!dateStr) return new Date();
+
+      // Handle different date formats that might come from scraping
+      if (dateStr.includes("/")) {
+        // Format: MM/DD/YYYY
+        return new Date(dateStr);
+      } else if (dateStr.includes("-")) {
+        // Format: YYYY-MM-DD
+        return new Date(dateStr);
+      } else {
+        // Try to parse as-is
+        const parsed = new Date(dateStr);
+        return isNaN(parsed.getTime()) ? new Date() : parsed;
+      }
+    };
+
+    // Parse booking amount
+    const parseAmount = (amountStr: string): number => {
+      if (!amountStr) return 0;
+      // Remove currency symbols and parse
+      const cleaned = amountStr.replace(/[^\d.-]/g, "");
+      const amount = parseFloat(cleaned);
+      return isNaN(amount) ? 0 : amount;
+    };
+
+    const jobItemData: CreateJobItemData = {
+      job_id: jobId,
+      property_id: propertyId, // Now an ObjectId string from the job
+      guest_name: basicData.guestName || "Unknown Guest",
+      reservation_id: basicData.reservationId,
+      confirmation_number: basicData.confirmationCode || "",
+      check_in_date: parseDate(basicData.checkInDate),
+      check_out_date: parseDate(basicData.checkOutDate),
+      room_type: basicData.roomType || "Unknown",
+      booking_amount: parseAmount(basicData.bookingAmount),
+      booked_date: parseDate(basicData.bookedDate),
+      has_card_info: !!cardData,
+      card_info: cardData || undefined,
+      has_payment_info: !!paymentData,
+      payment_info: paymentData || undefined,
+      reservation_status: "Active",
+    };
+
+    const savedItem = await jobService.createJobItem(jobItemData);
+    console.log(`✅ Saved reservation ${basicData.reservationId} to database`);
+
+    return savedItem;
+  } catch (dbError: any) {
+    console.error(
+      `❌ Failed to save reservation ${
+        basicData?.reservationId || "unknown"
+      } to database:`,
+      dbError.message
+    );
+
+    // Log additional context for debugging
+    console.error(`Debug info - jobId: ${jobId}, propertyId: ${propertyId}`);
+
+    // Don't rethrow the error to prevent stopping the entire scraping process
+    // Just log it and continue with the next reservation
+    return null;
   }
 }

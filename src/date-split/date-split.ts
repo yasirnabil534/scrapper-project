@@ -11,7 +11,8 @@ export async function splitDateRange(
   page: Page,
   start_date: string,
   end_date: string,
-  propertyId: string
+  expediaId: string,
+  jobId?: string
 ) {
   try {
     // Check if scraping is paused before starting
@@ -55,7 +56,7 @@ export async function splitDateRange(
           chunk.end
         }`
       );
-      await applyFilter(page, chunk.start, chunk.end, propertyId);
+      await applyFilter(page, chunk.start, chunk.end, expediaId, jobId);
     }
   } catch (error) {
     console.error("Error in setDateRange:", error);
