@@ -8,7 +8,8 @@ export async function applyFilter(
   page: Page,
   startDate: string,
   endDate: string,
-  propertyId: string
+  expediaId: string,
+  jobId?: string
 ) {
   try {
     // Check if scraping is paused before starting
@@ -271,7 +272,7 @@ export async function applyFilter(
     }
 
     console.log("Starting data scraping...");
-    await scrapeData(page, propertyId, startDate, endDate);
+    await scrapeData(page, expediaId, startDate, endDate, jobId);
   } catch (error: any) {
     console.error("Error in applyFilter:", error);
     throw error;

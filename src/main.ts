@@ -10,9 +10,10 @@ import { propertySearchAndClickReservation } from "./property-search/property-se
 dotenv.config();
 
 async function main(
-  propertyId?: string,
+  expediaId?: string,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  jobId?: string
 ): Promise<void> {
   try {
     // Step 1: Setup browser and navigate to login page
@@ -73,8 +74,8 @@ async function main(
         // Continue even if OTP fails as it might not be required
       }
 
-      // Step 3: Perform property search with the provided property ID
-      if (propertyId) {
+      // Step 3: Perform property search with the provided expedia ID
+      if (expediaId) {
         try {
           // Check pause state before property search
           await scrapingStateManager.waitWhilePaused();
@@ -84,8 +85,8 @@ async function main(
             return;
           }
 
-          console.log(`Starting property search for ID: ${propertyId}`);
-          await propertySearchAndClickReservation(page, propertyId);
+          console.log(`Starting property search for Expedia ID: ${expediaId}`);
+          await propertySearchAndClickReservation(page, expediaId);
           console.log(
             "Property search and reservation completed successfully!"
           );
@@ -94,11 +95,11 @@ async function main(
           throw error;
         }
       } else {
-        console.log("No property ID provided, skipping property search.");
+        console.log("No expedia ID provided, skipping property search.");
       }
 
       try {
-        if (startDate && endDate && propertyId) {
+        if (startDate && endDate && expediaId) {
           // Check pause state before date splitting
           await scrapingStateManager.waitWhilePaused();
           if (!scrapingStateManager.isRunning()) {
@@ -107,10 +108,10 @@ async function main(
             return;
           }
 
-          await splitDateRange(page, startDate, endDate, propertyId);
+          await splitDateRange(page, startDate, endDate, expediaId, jobId);
         } else {
           console.log(
-            "No start date or end date, or property ID provided, skipping date selection."
+            "No start date or end date, or expedia ID provided, skipping date selection."
           );
         }
         console.log("Date selection completed successfully!");
