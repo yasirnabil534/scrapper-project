@@ -93,7 +93,6 @@ const PropertySchema = new Schema<IProperty>(
 );
 
 // Indexes
-PropertySchema.index({ expedia_id: 1 }, { unique: true });
 PropertySchema.index({ created_by: 1 });
 PropertySchema.index({ status: 1 });
 PropertySchema.index({ property_name: 1 });

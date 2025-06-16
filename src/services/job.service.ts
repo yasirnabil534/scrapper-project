@@ -50,6 +50,7 @@ export interface CreateJobItemData {
   has_payment_info?: boolean;
   payment_info?: PaymentInfo;
   reservation_status: string;
+  additional_text?: string;
 }
 
 export class JobService {
