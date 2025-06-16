@@ -153,6 +153,10 @@ export async function scrapeData(
                 bookedDate:
                   row.querySelector("td.bookedOnDate")?.textContent?.trim() ||
                   "",
+                reservationStatus:
+                  row
+                    .querySelector("td.bookingAmount .secondRowStyle span")
+                    ?.textContent?.trim() || "",
               };
             }, row);
 
@@ -490,6 +494,7 @@ export async function scrapeData(
                           cvv: rawCardData.cvv,
                           reason_for_charge: hasEvcCard.status || "None",
                         };
+                        basicData.additional_text = rawCardData.additionalText;
                       }
                     }
 
@@ -781,7 +786,7 @@ export async function scrapeData(
 // Helper function to save reservation data to database
 async function saveReservationToDatabase(
   jobId: string,
-  propertyId: string, // This is now an ObjectId string from the job
+  propertyId: string,
   basicData: any,
   cardData: CardInfo | null,
   paymentData: PaymentInfo | null
@@ -856,12 +861,12 @@ async function saveReservationToDatabase(
       card_info: cardData || undefined,
       has_payment_info: !!paymentData,
       payment_info: paymentData || undefined,
-      reservation_status: "Active",
+      reservation_status: basicData.reservationStatus,
+      additional_text: basicData.additional_text || undefined,
     };
 
     const savedItem = await jobService.createJobItem(jobItemData);
     console.log(`✅ Saved reservation ${basicData.reservationId} to database`);
-
     return savedItem;
   } catch (dbError: any) {
     console.error(

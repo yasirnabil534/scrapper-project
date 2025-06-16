@@ -1,5 +1,8 @@
+import dotenv from "dotenv";
 import puppeteer, { Browser, Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+
+dotenv.config();
 
 export async function browserSetup(): Promise<{
   browser: Browser;
@@ -19,16 +22,21 @@ export async function browserSetup(): Promise<{
         "--disable-features=IsolateOrigins,site-per-process",
         "--disable-blink-features=AutomationControlled",
         "--disable-extensions",
+        // "--proxy-server=brd.superproxy.io:33335",
       ],
       timeout: 60000,
     });
 
     const page: Page = await browser.newPage();
 
+    // await page.authenticate({
+    //   username: `${process.env.BRIGHT_DATA_USERNAME}`,
+    //   password: `${process.env.BRIGHT_DATA_PASSWORD}`,
+    // });
     // Set user agent to avoid detection
-    await page.setUserAgent(
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    );
+    // await page.setUserAgent(
+    //   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    // );
 
     await page.setDefaultNavigationTimeout(60000);
     await page.setDefaultTimeout(60000);
@@ -46,8 +54,8 @@ export async function browserSetup(): Promise<{
         await page.goto(
           "https://www.expediapartnercentral.com/Account/Logon?signedOff=true",
           {
-            waitUntil: "domcontentloaded", 
-            timeout: 30000, 
+            waitUntil: "domcontentloaded",
+            timeout: 30000,
           }
         );
 

@@ -33,6 +33,7 @@ export interface IJobItem extends Document {
   has_payment_info: boolean;
   payment_info?: PaymentInfo;
   reservation_status: string;
+  additional_text?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -148,6 +149,10 @@ const JobItemSchema = new Schema<IJobItem>(
     reservation_status: {
       type: String,
       required: true,
+    },
+    additional_text: {
+      type: String,
+      required: false,
     },
   },
   {
