@@ -1,14 +1,35 @@
+import { exec } from "child_process";
 import dotenv from "dotenv";
-import ipLocation from "iplocation";
 import puppeteer, { Browser, Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+const chromeExecutable =
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
 dotenv.config();
 
 if (!process.env.STEEL_API_KEY) {
   throw new Error("STEEL_API_KEY environment variable is not defined");
 }
 
-export async function browserSetup(session: any): Promise<{
+const openDevtools = async (page: Page, client: any) => {
+  // get current frameId
+  const frameId = (page?.mainFrame() as any)?._id;
+  console.log("frameId", frameId);
+  // get URL for devtools from Browser API
+  const { url: inspectUrl } = await client.send("Page.inspect", {
+    frameId,
+  });
+  // open devtools URL in local chrome
+  exec(`"${chromeExecutable}" "${inspectUrl}"`, (error: any) => {
+    if (error) throw new Error("Unable to open devtools: " + error);
+  });
+  // wait for devtools ui to load
+  await delay(5000);
+};
+
+const SBR_WS_ENDPOINT = `wss://${process.env.BRIGHT_DATA_USERNAME}:${process.env.BRIGHT_DATA_PASSWORD}@brd.superproxy.io:9222`;
+
+export async function browserSetup(): Promise<{
   browser: Browser;
   page: Page;
 }> {
@@ -33,32 +54,36 @@ export async function browserSetup(session: any): Promise<{
     // });
 
     browser = await puppeteer.connect({
-      browserWSEndpoint: `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${session.id}`,
-      protocolTimeout: 1200000,
+      browserWSEndpoint:
+        "wss://brd-customer-hl_af263bba-zone-expedia_test_browser:vj2iow2h8v8v@brd.superproxy.io:9222",
     });
 
     const page: Page = await browser.newPage();
 
+    const client = await page.createCDPSession();
+    console.log("client", client);
+    await openDevtools(page, client);
+
     //ip check
 
-    try {
-      await page.goto("https://api.ipify.org/?format=json");
-      const ipData = await page.evaluate(() => document.body.textContent);
-      if (!ipData) {
-        throw new Error("Failed to get IP data");
-      }
-      const ip = JSON.parse(ipData).ip;
-      console.log("Current IP:", ip);
-      // const location = (await ipLocation(ip)) as any;
-      // console.log("Location:", location);
-      // if (location?.country?.code !== process.env.LOCATION_COUNTRY_CODE) {
-      //   console.log("Not in United States - Stopping server");
-      //   process.exit(1);
-      // }
-    } catch (error) {
-      console.error("Error checking IP:", error);
-      process.exit(1);
-    }
+    // try {
+    //   await page.goto("https://api.ipify.org/?format=json");
+    //   const ipData = await page.evaluate(() => document.body.textContent);
+    //   if (!ipData) {
+    //     throw new Error("Failed to get IP data");
+    //   }
+    //   const ip = JSON.parse(ipData).ip;
+    //   console.log("Current IP:", ip);
+    //   // const location = (await ipLocation(ip)) as any;
+    //   // console.log("Location:", location);
+    //   // if (location?.country?.code !== process.env.LOCATION_COUNTRY_CODE) {
+    //   //   console.log("Not in United States - Stopping server");
+    //   //   process.exit(1);
+    //   // }
+    // } catch (error) {
+    //   console.error("Error checking IP:", error);
+    //   process.exit(1);
+    // }
 
     // await page.authenticate({
     //   username: `${process.env.BRIGHT_DATA_USERNAME}`,
@@ -94,7 +119,7 @@ export async function browserSetup(session: any): Promise<{
         await delay(3000);
 
         // Check if page loaded successfully by looking for a common element
-        await page.waitForSelector("body", { timeout: 5000 });
+        await page.waitForSelector("body", { timeout: 500000 });
 
         navigationSuccess = true;
         console.log("Navigation successful!");
@@ -127,7 +152,7 @@ export async function browserSetup(session: any): Promise<{
     if (browser) {
       try {
         await browser.close();
-        await session.release();
+        // await session.release();
       } catch (closeError) {
         console.error("Error closing browser:", closeError);
       }
