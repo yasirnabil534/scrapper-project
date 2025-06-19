@@ -852,17 +852,40 @@ app.get("/api/jobs/:jobId/progress", (async (
  *           type: string
  *         description: The job ID to get items for
  *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 50
- *         description: Maximum number of items to return
- *       - in: query
  *         name: page
  *         schema:
  *           type: integer
  *           default: 1
  *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Maximum number of items to return per page
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           default: createdAt
+ *         description: Field to sort by (e.g., guest_name, reservation_id, createdAt, etc.)
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort order (asc or desc)
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by guest name or reservation ID (partial match, case-insensitive)
+ *       - in: query
+ *         name: reasonForCharge
+ *         schema:
+ *           type: string
+ *         description: Filter by reason for charge (partial match, case-insensitive)
  *     responses:
  *       200:
  *         description: Job items retrieved successfully
@@ -902,14 +925,16 @@ app.get("/api/jobs/:jobId/progress", (async (
  *                         type: boolean
  *                       has_payment_info:
  *                         type: boolean
- *                 pagination:
+ *                 metadata:
  *                   type: object
  *                   properties:
- *                     total:
+ *                     totalDocuments:
+ *                       type: integer
+ *                     currentPage:
+ *                       type: integer
+ *                     totalPage:
  *                       type: integer
  *                     limit:
- *                       type: integer
- *                     page:
  *                       type: integer
  *       404:
  *         description: Job not found
@@ -922,7 +947,14 @@ app.get("/api/jobs/:jobId/items", (async (
 ) => {
   try {
     const { jobId } = req.params;
-    const { limit = 50, page = 1 } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      search,
+      reasonForCharge,
+    } = req.query;
 
     const job = await jobService.getJobById(jobId);
     if (!job) {
@@ -932,20 +964,25 @@ app.get("/api/jobs/:jobId/items", (async (
       });
     }
 
-    const items = await jobService.getJobItems(
+    const result = await jobService.getJobItemsAdvanced({
       jobId,
-      parseInt(limit as string)
-    );
-    const totalCount = await jobService.getJobItemsCount(jobId);
+      page: parseInt(page as string, 10),
+      limit: parseInt(limit as string, 10),
+      sortBy: sortBy as string,
+      sortOrder: (sortOrder as string) === "asc" ? "asc" : "desc",
+      search: search as string,
+      reasonForCharge: reasonForCharge as string,
+    });
 
     res.status(200).json({
       status: 200,
       message: "Job items retrieved successfully",
-      items: items,
-      pagination: {
-        total: totalCount,
-        limit: parseInt(limit as string),
-        page: parseInt(page as string),
+      items: result.items,
+      metadata: {
+        totalDocuments: result.totalDocuments,
+        currentPage: result.currentPage,
+        totalPage: result.totalPage,
+        limit: result.limit,
       },
     });
   } catch (err: any) {

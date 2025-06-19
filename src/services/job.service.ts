@@ -507,6 +507,74 @@ export class JobService {
       .populate("job_id", "job_status portfolio_name property_name")
       .exec();
   }
+
+  /**
+   * Advanced get job items with pagination, search, filter, and sorting
+   */
+  async getJobItemsAdvanced({
+    jobId,
+    page = 1,
+    limit = 10,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+    search,
+    reasonForCharge,
+  }: {
+    jobId: string;
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: "asc" | "desc";
+    search?: string;
+    reasonForCharge?: string;
+  }): Promise<{
+    items: IJobItem[];
+    totalDocuments: number;
+    currentPage: number;
+    totalPage: number;
+    limit: number;
+  }> {
+    try {
+      const objectId = this.validateObjectId(jobId, "jobId");
+      const filter: any = { job_id: objectId };
+      if (search) {
+        filter.$or = [
+          { guest_name: { $regex: search, $options: "i" } },
+          { reservation_id: { $regex: search, $options: "i" } },
+        ];
+      }
+      if (reasonForCharge) {
+        filter["card_info.reason_for_charge"] = {
+          $regex: reasonForCharge,
+          $options: "i",
+        };
+      }
+      const sort: any = {};
+      sort[sortBy] = sortOrder === "asc" ? 1 : -1;
+      const skip = (page - 1) * limit;
+      const [items, totalDocuments] = await Promise.all([
+        JobItem.find(filter).sort(sort).skip(skip).limit(limit).exec(),
+        JobItem.countDocuments(filter),
+      ]);
+      const totalPage = Math.ceil(totalDocuments / limit) || 1;
+      return {
+        items,
+        totalDocuments,
+        currentPage: page,
+        totalPage,
+        limit,
+      };
+    } catch (error) {
+      console.error(`Error in getJobItemsAdvanced: ${error}`);
+      return {
+        items: [],
+        totalDocuments: 0,
+        currentPage: page,
+        totalPage: 1,
+        limit,
+      };
+    }
+  }
 }
 
 // Export singleton instance
