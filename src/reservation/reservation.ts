@@ -1,5 +1,4 @@
 import dotenv from "dotenv";
-import Steel from "steel-sdk";
 import { browserSetup } from "../browser-setup/browser.js";
 import { delay } from "../common/delay.js";
 import { scrapingStateManager } from "../common/scraping-state.js";
@@ -10,18 +9,18 @@ import scrapeWithReservationId from "../retry-scrape-data/scrape-with-reservatio
 dotenv.config();
 
 // Initialize Steel client
-const client = new Steel({
-  steelAPIKey: process.env.STEEL_API_KEY, // Optional
-});
+// const client = new Steel({
+//   steelAPIKey: process.env.STEEL_API_KEY, // Optional
+// });
 
 async function reservation(reservations: any[]): Promise<void> {
   try {
     // Create a new session
-    const session = await client.sessions.create();
+    // const session = await client.sessions.create();
 
     // Step 1: Setup browser and navigate to login page
     console.log("Setting up browser...");
-    const { browser, page } = await browserSetup(session);
+    const { browser, page } = await browserSetup();
     console.log("Browser setup complete. Page is ready at login screen.");
 
     // Step 2: Check if login credentials are provided

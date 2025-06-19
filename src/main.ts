@@ -1,5 +1,4 @@
 import dotenv from "dotenv";
-import Steel from "steel-sdk";
 import { browserSetup } from "./browser-setup/browser.js";
 import { delay } from "./common/delay.js";
 import { scrapingStateManager } from "./common/scraping-state.js";
@@ -17,22 +16,22 @@ async function main(
   jobId?: string
 ): Promise<void> {
   try {
-    const client = new Steel({
-      steelAPIKey: process.env.STEEL_API_KEY, // Optional
-    });
+    // const client = new Steel({
+    //   steelAPIKey: process.env.STEEL_API_KEY, // Optional
+    // });
     // Create a session with additional features
-    const session = await client.sessions.create({
-      region: "lax",
-      useProxy: true,
-      solveCaptcha: true,
-    });
-    const debugUrl = session.debugUrl;
-    console.log(`Debug URL: ${debugUrl}`);
+    // const session = await client.sessions.create({
+    //   region: "lax",
+    //   useProxy: true,
+    //   solveCaptcha: true,
+    // });
+    // const debugUrl = session.debugUrl;
+    // console.log(`Debug URL: ${debugUrl}`);
     // console.log(session);
     try {
       // Step 1: Setup browser and navigate to login page
       console.log("Setting up browser...");
-      const { browser, page } = await browserSetup(session);
+      const { browser, page } = await browserSetup();
       console.log("Browser setup complete. Page is ready at login screen.");
 
       // Check if scraping is paused and wait if needed
@@ -42,7 +41,7 @@ async function main(
       if (!scrapingStateManager.isRunning()) {
         console.log("Scraping was stopped, exiting...");
         await browser.close();
-        await client.sessions.release(session.id);
+        // await client.sessions.release(session.id);
         return;
       }
 
@@ -59,7 +58,7 @@ async function main(
           if (!scrapingStateManager.isRunning()) {
             console.log("Scraping was stopped, exiting...");
             await browser.close();
-            await client.sessions.release(session.id);
+            // await client.sessions.release(session.id);
             return;
           }
 
@@ -80,7 +79,7 @@ async function main(
           if (!scrapingStateManager.isRunning()) {
             console.log("Scraping was stopped, exiting...");
             await browser.close();
-            await client.sessions.release(session.id);
+            // await client.sessions.release(session.id);
             return;
           }
 
@@ -99,7 +98,7 @@ async function main(
             if (!scrapingStateManager.isRunning()) {
               console.log("Scraping was stopped, exiting...");
               await browser.close();
-              await client.sessions.release(session.id);
+              // await client.sessions.release(session.id);
               return;
             }
 
@@ -125,7 +124,7 @@ async function main(
             if (!scrapingStateManager.isRunning()) {
               console.log("Scraping was stopped, exiting...");
               await browser.close();
-              await client.sessions.release(session.id);
+              // await client.sessions.release(session.id);
               return;
             }
 
@@ -146,7 +145,7 @@ async function main(
 
       // Close browser when done
       await browser.close();
-      await client.sessions.release(session.id);
+      // await client.sessions.release(session.id);
       console.log("Browser closed successfully.");
     } catch (error) {
       console.error("Main function error:", error);
