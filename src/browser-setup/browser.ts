@@ -2,32 +2,32 @@ import { exec } from "child_process";
 import dotenv from "dotenv";
 import puppeteer, { Browser, Page } from "puppeteer";
 import { delay } from "../common/delay.js";
-const chromeExecutable =
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+// const chromeExecutable =
+//   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 dotenv.config();
 
-if (!process.env.STEEL_API_KEY) {
-  throw new Error("STEEL_API_KEY environment variable is not defined");
-}
+  // if (!process.env.STEEL_API_KEY) {
+  //   throw new Error("STEEL_API_KEY environment variable is not defined");
+  // }
 
-const openDevtools = async (page: Page, client: any) => {
-  // get current frameId
-  const frameId = (page?.mainFrame() as any)?._id;
-  console.log("frameId", frameId);
-  // get URL for devtools from Browser API
-  const { url: inspectUrl } = await client.send("Page.inspect", {
-    frameId,
-  });
-  // open devtools URL in local chrome
-  exec(`"${chromeExecutable}" "${inspectUrl}"`, (error: any) => {
-    if (error) throw new Error("Unable to open devtools: " + error);
-  });
-  // wait for devtools ui to load
-  await delay(5000);
-};
+// const openDevtools = async (page: Page, client: any) => {
+//   // get current frameId
+//   const frameId = (page?.mainFrame() as any)?._id;
+//   console.log("frameId", frameId);
+//   // get URL for devtools from Browser API
+//   const { url: inspectUrl } = await client.send("Page.inspect", {
+//     frameId,
+//   });
+//   // open devtools URL in local chrome
+//   exec(`"${chromeExecutable}" "${inspectUrl}"`, (error: any) => {
+//     if (error) throw new Error("Unable to open devtools: " + error);
+//   });
+//   // wait for devtools ui to load
+//   await delay(5000);
+// };
 
-const SBR_WS_ENDPOINT = `wss://${process.env.BRIGHT_DATA_USERNAME}:${process.env.BRIGHT_DATA_PASSWORD}@brd.superproxy.io:9222`;
+// const SBR_WS_ENDPOINT = `wss://${process.env.BRIGHT_DATA_USERNAME}:${process.env.BRIGHT_DATA_PASSWORD}@brd.superproxy.io:9222`;
 
 export async function browserSetup(): Promise<{
   browser: Browser;
@@ -36,33 +36,31 @@ export async function browserSetup(): Promise<{
   let browser: Browser | null = null;
 
   try {
-    // browser = await puppeteer.launch({
-    //   headless: false,
-    //   defaultViewport: null,
-    //   args: [
-    //     "--start-maximized",
-    //     "--no-sandbox",
-    //     "--disable-setuid-sandbox",
-    //     "--disable-web-security",
-    //     "--disable-features=IsolateOrigins,site-per-process",
-    //     "--disable-blink-features=AutomationControlled",
-    //     "--disable-extensions",
-    //     // "--proxy-server=brd.superproxy.io:33335",
-    //   ],
-    //   browserWSEndpoint: `wss://connect.steel.dev?apiKey=${process.env.STEEL_API_KEY}&sessionId=${session.id}`,
-    //   timeout: 60000,
-    // });
-
-    browser = await puppeteer.connect({
-      browserWSEndpoint:
-        "wss://brd-customer-hl_af263bba-zone-expedia_test_browser:vj2iow2h8v8v@brd.superproxy.io:9222",
+    browser = await puppeteer.launch({
+      headless: false,
+      defaultViewport: null,
+      args: [
+        "--start-maximized",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-web-security",
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-extensions",
+        // "--proxy-server=brd.superproxy.io:33335",
+      ],
     });
+
+    // browser = await puppeteer.connect({
+    //   browserWSEndpoint:
+    //     "wss://brd-customer-hl_af263bba-zone-expedia_test_browser:vj2iow2h8v8v@brd.superproxy.io:9222",
+    // });
 
     const page: Page = await browser.newPage();
 
-    const client = await page.createCDPSession();
-    console.log("client", client);
-    await openDevtools(page, client);
+    // const client = await page.createCDPSession();
+    // console.log("client", client);
+    // await openDevtools(page, client);
 
     //ip check
 
