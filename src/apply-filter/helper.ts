@@ -22,6 +22,58 @@ export async function setDateRange(
   start_date: string,
   end_date: string
 ) {
+  const maxRetries = 3;
+  let lastError: any;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Date range setting attempt ${attempt}/${maxRetries}`);
+      await setDateRangeInternal(page, start_date, end_date);
+      console.log("Date range set successfully");
+      return;
+    } catch (error: any) {
+      console.error(`Date range attempt ${attempt} failed:`, error.message);
+      lastError = error;
+
+      if (attempt < maxRetries) {
+        console.log("Retrying date range setting...");
+        await new Promise((r) => setTimeout(r, 3000)); // Wait longer before retry
+
+        // Try to close any open calendars and refresh focus
+        try {
+          await page.keyboard.press("Escape");
+          await new Promise((r) => setTimeout(r, 1000));
+
+          // Click somewhere safe to reset focus
+          await page.click("body");
+          await new Promise((r) => setTimeout(r, 1000));
+
+          // Ensure we're on the right page in browserless
+          const currentUrl = page.url();
+          console.log(`Current URL: ${currentUrl}`);
+          if (!currentUrl.includes("expediapartnercentral.com")) {
+            console.log(
+              "Page seems to have navigated away, attempting to stay on current tab"
+            );
+            await page.bringToFront();
+          }
+        } catch (resetError) {
+          console.log("Reset attempt failed, continuing...");
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    `Failed to set date range after ${maxRetries} attempts: ${lastError.message}`
+  );
+}
+
+async function setDateRangeInternal(
+  page: Page,
+  start_date: string,
+  end_date: string
+) {
   try {
     // The input dates from URL are in MM/DD/YYYY format
     // We need to convert them to DD/MM/YYYY format for Expedia interface
@@ -93,15 +145,113 @@ export async function setDateRange(
     if (!fromDateInput) {
       throw new Error("From date input not found");
     }
+
+    // Ensure focus and click the input
+    await page.focus(".from-input-label input.fds-field-input");
+    await new Promise((r) => setTimeout(r, 500));
     await fromDateInput.click();
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 2000)); // Wait longer for calendar to appear
+
+    // Wait for calendar to appear with multiple selector attempts
+    console.log("Waiting for calendar to load...");
+    let calendarVisible = false;
+    const calendarSelectors = [
+      ".first-month h2",
+      ".fds-datepicker-calendar .first-month h2",
+      ".fds-datepicker .first-month h2",
+      "[data-testid='datepicker'] .first-month h2",
+    ];
+
+    for (const selector of calendarSelectors) {
+      try {
+        await page.waitForSelector(selector, {
+          visible: true,
+          timeout: 5000,
+        });
+        console.log(`Calendar found with selector: ${selector}`);
+        calendarVisible = true;
+        break;
+      } catch (error) {
+        console.log(`Calendar not found with selector: ${selector}`);
+      }
+    }
+
+    if (!calendarVisible) {
+      // Try clicking again if calendar didn't appear
+      console.log(
+        "Calendar didn't appear, trying to click date input again..."
+      );
+      await fromDateInput.click();
+      await new Promise((r) => setTimeout(r, 3000));
+
+      // Try one more time with the primary selector
+      await page.waitForSelector(".first-month h2", {
+        visible: true,
+        timeout: 10000,
+      });
+    }
+
+    // Additional wait to ensure calendar is fully rendered
+    await new Promise((r) => setTimeout(r, 2000));
 
     // Step 1: Get current year and month from first calendar
-    const firstMonthHeader = await page.$eval(
-      ".first-month h2",
-      (el) => el.textContent?.trim() || ""
-    );
+    let firstMonthHeader: string = "";
+    try {
+      firstMonthHeader = await page.$eval(
+        ".first-month h2",
+        (el) => el.textContent?.trim() || ""
+      );
+      if (!firstMonthHeader) {
+        throw new Error("First month header is empty");
+      }
+      console.log("Successfully found first month header:", firstMonthHeader);
+    } catch (error) {
+      console.error(
+        "Failed to get first month header with primary selector:",
+        error
+      );
+
+      // Try alternative approaches
+      const alternatives = [
+        ".fds-datepicker-calendar .first-month h2",
+        ".fds-datepicker .first-month h2",
+        ".first-month .fds-datepicker-month-header",
+        ".calendar-month-header",
+      ];
+
+      let found = false;
+      for (const altSelector of alternatives) {
+        try {
+          const headerText = await page.$eval(
+            altSelector,
+            (el) => el.textContent?.trim() || ""
+          );
+          if (headerText) {
+            firstMonthHeader = headerText;
+            console.log(
+              `Found header with alternative selector ${altSelector}: ${firstMonthHeader}`
+            );
+            found = true;
+            break;
+          }
+        } catch (altError) {
+          continue;
+        }
+      }
+
+      if (!found || !firstMonthHeader) {
+        throw new Error(
+          "Calendar month header not found with any selector. Calendar may not have loaded properly."
+        );
+      }
+    }
+
+    console.log("Final first month header:", firstMonthHeader);
     const [currentMonth, currentYear] = firstMonthHeader.split(" ");
+
+    if (!currentMonth || !currentYear) {
+      throw new Error(`Invalid month header format: ${firstMonthHeader}`);
+    }
     // Convert MM/DD/YYYY to a format JavaScript can parse correctly
     const [month, day, year] = internalStartDate.split("/");
     const targetDate = new Date(`${year}-${month}-${day}`);

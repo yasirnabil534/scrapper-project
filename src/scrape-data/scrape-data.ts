@@ -546,7 +546,6 @@ export async function scrapeData(
                         return {
                           totalGuestPayment,
                           cancellationFee,
-                          expediaCompensation,
                           totalPayout,
                         };
                       }
@@ -631,22 +630,22 @@ export async function scrapeData(
 
                       // Update payment data if it exists, or create it
                       if (paymentData) {
-                        if (remainingAmountToCharge) {
+                        if (remainingBalance) {
                           paymentData.amount_to_charge_or_refund =
-                            parsePaymentAmount(remainingAmountToCharge);
-                        } else if (amountToRefund) {
+                            parsePaymentAmount(remainingBalance);
+                        } else if (remainingBalance) {
                           paymentData.amount_to_charge_or_refund =
-                            -parsePaymentAmount(amountToRefund); // Negative for refund
+                            -parsePaymentAmount(remainingBalance); // Negative for refund
                         }
-                      } else if (remainingAmountToCharge || amountToRefund) {
+                      } else if (remainingBalance) {
                         // Create payment data if we have charge/refund info but no other payment data
                         paymentData = {
                           total_guest_payment: 0,
                           cancellation_fee: 0,
                           total_payout: 0,
-                          amount_to_charge_or_refund: remainingAmountToCharge
-                            ? parsePaymentAmount(remainingAmountToCharge)
-                            : -parsePaymentAmount(amountToRefund),
+                          amount_to_charge_or_refund: parsePaymentAmount(
+                            remainingBalance
+                          ),
                         };
                       }
 

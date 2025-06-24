@@ -1,4 +1,3 @@
-import { exec } from "child_process";
 import dotenv from "dotenv";
 import puppeteer, { Browser, Page } from "puppeteer";
 import { delay } from "../common/delay.js";
@@ -6,10 +5,6 @@ import { delay } from "../common/delay.js";
 //   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 dotenv.config();
-
-  // if (!process.env.STEEL_API_KEY) {
-  //   throw new Error("STEEL_API_KEY environment variable is not defined");
-  // }
 
 // const openDevtools = async (page: Page, client: any) => {
 //   // get current frameId
@@ -28,6 +23,8 @@ dotenv.config();
 // };
 
 // const SBR_WS_ENDPOINT = `wss://${process.env.BRIGHT_DATA_USERNAME}:${process.env.BRIGHT_DATA_PASSWORD}@brd.superproxy.io:9222`;
+
+const SBR_WS_ENDPOINT = `wss://${process.env.BRIGHT_DATA_USERNAME}:${process.env.BRIGHT_DATA_PASSWORD}@brd.superproxy.io:9222`;
 
 export async function browserSetup(): Promise<{
   browser: Browser;
@@ -56,7 +53,28 @@ export async function browserSetup(): Promise<{
     //     "wss://brd-customer-hl_af263bba-zone-expedia_test_browser:vj2iow2h8v8v@brd.superproxy.io:9222",
     // });
 
+    // browser = await puppeteer.connect({
+    //   browserWSEndpoint:
+    //     "wss://production-sfo.browserless.io/?token=2SXlnLjeZpwR2tV6ab1698bfe680a3959c2c681f06939ee3b",
+    // });
+
+    // browser = await puppeteer.connect({
+    //   browserWSEndpoint:"wss://production-sfo.browserless.io/?token=&record=true",
+    // });
+
     const page: Page = await browser.newPage();
+    // const cdp = await page.createCDPSession();
+    // await (cdp as any).send("Browserless.startRecording");
+    // console.log("Recording started successfully");
+
+    // // // Wait a bit before generating live URL
+    // await delay(2000);
+
+    // // // Generate live URL for user interaction
+    // const { liveURL } = (await (cdp as any).send("Browserless.liveURL", {
+    //   timeout: 600_000,
+    // })) as { liveURL: string };
+    // console.log("Click for live experience:", liveURL);
 
     // const client = await page.createCDPSession();
     // console.log("client", client);
