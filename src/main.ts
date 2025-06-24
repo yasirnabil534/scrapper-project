@@ -6,6 +6,7 @@ import { splitDateRange } from "./date-split/date-split.js";
 import login from "./login/login.js";
 import handleOtpVerification from "./otp-verification/otp-verification.js";
 import { propertySearchAndClickReservation } from "./property-search/property-search.js";
+import { decryptPassword } from "./common/encription.js";
 
 dotenv.config();
 
@@ -13,7 +14,9 @@ async function main(
   expediaId?: string,
   startDate?: string,
   endDate?: string,
-  jobId?: string
+  jobId?: string,
+  user_email?: string,
+  user_password?: string
 ): Promise<void> {
   try {
     // const client = new Steel({
@@ -46,8 +49,8 @@ async function main(
       }
 
       // Step 2: Check if login credentials are provided
-      const email = process.env.EXPEDIA_EMAIL;
-      const password = process.env.EXPEDIA_PASSWORD;
+      const email = user_email;
+      const password = decryptPassword(user_password);
 
       if (email && password) {
         console.log("Login credentials found, performing automatic login...");

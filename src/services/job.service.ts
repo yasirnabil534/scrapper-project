@@ -84,7 +84,11 @@ export class JobService {
   /**
    * Get expedia_id from job's property
    */
-  async getExpediaIdFromJob(jobId: string): Promise<string | null> {
+  async getExpediaIdFromJob(jobId: string): Promise<{
+    expediaId: string;
+    user_email?: string;
+    user_password?: string;
+  } | null> {
     try {
       const job = await this.getJobWithProperty(jobId);
 
@@ -118,7 +122,11 @@ export class JobService {
       console.log(
         `✅ Found expedia_id: ${property.expedia_id} for job: ${jobId}`
       );
-      return property.expedia_id;
+      return {
+        expediaId: property.expedia_id,
+        user_email: property.user_email,
+        user_password: property.user_password,
+      };
     } catch (error) {
       console.error(`Error getting expedia_id for job ${jobId}:`, error);
       return null;
