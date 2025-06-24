@@ -524,14 +524,23 @@ app.post("/api/expedia/property-run-job", (async (
 
     // 2. Get expedia_id from job's property
     console.log(`Getting expedia_id for job ${jobId}...`);
-    const expediaId = await jobService.getExpediaIdFromJob(jobId);
+    const jobData = await jobService.getExpediaIdFromJob(jobId);
 
-    if (!expediaId) {
+    if (!jobData || !jobData.expediaId) {
       return res.status(400).json({
         status: 400,
         message: `Cannot retrieve valid expedia_id for job ${jobId}. Property may not have expedia_id assigned or expedia_id is "0".`,
       });
     }
+
+    if (!jobData.user_email || !jobData.user_password) {
+      return res.status(400).json({
+        status: 400,
+        message: `Cannot retrieve valid user_email or user_password for job ${jobId}. Property may not have user_email or user_password assigned.`,
+      });
+    }
+
+    const { expediaId, user_email, user_password } = jobData;
 
     console.log(`Using expedia_id: ${expediaId} for scraping`);
 
@@ -553,7 +562,7 @@ app.post("/api/expedia/property-run-job", (async (
 
     try {
       // 6. Run the main scraping function with expedia_id
-      await main(expediaId, startDate, endDate, jobId);
+      await main(expediaId, startDate, endDate, jobId, user_email, user_password);
 
       // 7. Get final job statistics
       const progress = await jobService.getJobProgress(jobId);
