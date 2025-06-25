@@ -5,7 +5,7 @@ import { scrapingStateManager } from "../common/scraping-state.js";
 import login from "../login/login.js";
 import handleOtpVerification from "../otp-verification/otp-verification.js";
 import scrapeWithReservationId from "../retry-scrape-data/scrape-with-reservationid.js";
-
+import { dualLogError, dualLogInfo } from "../common/log-helper.js";
 dotenv.config();
 
 // Initialize Steel client
@@ -19,16 +19,16 @@ async function reservation(reservations: any[]): Promise<void> {
     // const session = await client.sessions.create();
 
     // Step 1: Setup browser and navigate to login page
-    console.log("Setting up browser...");
+    await dualLogInfo("Setting up browser...");
     const { browser, page } = await browserSetup();
-    console.log("Browser setup complete. Page is ready at login screen.");
+    await dualLogInfo("Browser setup complete. Page is ready at login screen.");
 
     // Step 2: Check if login credentials are provided
     const email = process.env.EXPEDIA_EMAIL;
     const password = process.env.EXPEDIA_PASSWORD;
 
     if (email && password) {
-      console.log("Login credentials found, performing automatic login...");
+      await dualLogInfo("Login credentials found, performing automatic login...");
 
       try {
         await login(browser, page, email, password);
@@ -66,15 +66,15 @@ async function reservation(reservations: any[]): Promise<void> {
 
             // Check if scraping was stopped while paused
             if (!scrapingStateManager.isRunning()) {
-              console.log("Scraping was stopped, exiting...");
+              await dualLogError("Scraping was stopped, exiting...");
               return;
             }
 
-            console.log(
+            await dualLogInfo(
               `Processing reservation ${processedCount + 1}/${
                 reservations.length
               }`
-            );
+            ); 
 
             await scrapeWithReservationId(page, reservation);
             processedCount++;
@@ -88,17 +88,17 @@ async function reservation(reservations: any[]): Promise<void> {
             );
           }
         } catch (error: any) {
-          console.error("Reservation search failed:", error);
+          await dualLogError("Reservation search failed:", error);
           throw error;
         }
       } else {
-        console.log("No reservations provided, skipping reservation search.");
+        await dualLogInfo("No reservations provided, skipping reservation search.");
       }
     } else {
-      console.log("No login credentials provided.");
+      await dualLogInfo("No login credentials provided.");
     }
   } catch (error) {
-    console.error("Reservation function error:", error);
+    await dualLogError("Reservation function error:", error);
     throw error;
   }
 }

@@ -23,10 +23,12 @@
   },
   "homepage": "https://github.com/yasirnabil534/scrapper-project#readme",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.835.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "fs-extra": "^11.3.0",
     "googleapis": "^149.0.0",
     "iplocation": "^7.2.0",
     "mongoose": "^8.15.1",
@@ -43,6 +45,7 @@
   "devDependencies": {
     "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.2",
+    "@types/fs-extra": "^11.0.4",
     "@types/mongoose": "^5.11.96",
     "@types/node": "^22.15.29",
     "@types/swagger-jsdoc": "^6.0.4",

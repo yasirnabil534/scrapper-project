@@ -2,6 +2,7 @@ import bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
 import createError from "../common/error.js";
+import { getCurrentJobLogger } from "../common/log-helper.js";
 import { scrapingStateManager } from "../common/scraping-state.js";
 import { specs, swaggerUi } from "../config/swagger.js";
 import { getAccess, getOauth2Callback } from "../get-access/access.js";
@@ -562,7 +563,14 @@ app.post("/api/expedia/property-run-job", (async (
 
     try {
       // 6. Run the main scraping function with expedia_id
-      await main(expediaId, startDate, endDate, jobId, user_email, user_password);
+      await main(
+        expediaId,
+        startDate,
+        endDate,
+        jobId,
+        user_email,
+        user_password
+      );
 
       // 7. Get final job statistics
       const progress = await jobService.getJobProgress(jobId);
@@ -581,6 +589,16 @@ app.post("/api/expedia/property-run-job", (async (
       // 10. Stop legacy state manager
       scrapingStateManager.stopScraping();
 
+      // Get log file information if available
+      const logger = getCurrentJobLogger();
+      const logInfo = logger
+        ? {
+            logFilePath: logger.getLogFilePath(),
+            logEntriesCount: logger.getLogEntriesCount(),
+            note: "Log file will be uploaded to S3 and deleted locally after job completion",
+          }
+        : null;
+
       res.status(200).json({
         status: 200,
         message: `Property scraping ${finalStatus.toLowerCase()} successfully`,
@@ -588,6 +606,7 @@ app.post("/api/expedia/property-run-job", (async (
         jobId: jobId,
         progress: progress,
         finalStatus: finalStatus,
+        logInfo: logInfo,
       });
     } catch (scrapingError) {
       // Mark job as failed on scraping error

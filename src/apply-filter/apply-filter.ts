@@ -1,5 +1,6 @@
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+import { dualLogError, dualLogInfo } from "../common/log-helper.js";
 import { scrapingStateManager } from "../common/scraping-state.js";
 import { scrapeData } from "../scrape-data/scrape-data.js";
 import { setDateRange } from "./helper.js";
@@ -19,7 +20,7 @@ export async function applyFilter(
     }
 
     // Click the "Checking out" radio button
-    console.log('Selecting "Checking out" filter...');
+    await dualLogInfo('Selecting "Checking out" filter...');
     await page.evaluate(() => {
       const radioButtons = Array.from(
         document.querySelectorAll('input[type="radio"][name="dateTypeFilter"]')
@@ -46,9 +47,9 @@ export async function applyFilter(
     }
 
     // Set the date range
-    console.log(`Processing date range: ${startDate} to ${endDate}`);
+    await dualLogInfo(`Processing date range: ${startDate} to ${endDate}`);
     const dateValues = await setDateRange(page, startDate, endDate);
-    console.log("Set dates:", dateValues);
+    await dualLogInfo("Set dates:", dateValues);
 
     // Check pause state before applying more filters
     await scrapingStateManager.waitWhilePaused();
@@ -57,7 +58,7 @@ export async function applyFilter(
     }
 
     //wait for the more filter button
-    console.log("Waiting for the More filters button...");
+    await dualLogInfo("Waiting for the More filters button...");
     await page.waitForSelector(
       "button.fds-button2.utility.fds-dropdown-trigger",
       {
@@ -88,7 +89,7 @@ export async function applyFilter(
       throw new Error("More filters button not found");
     });
 
-    console.log(
+    await dualLogInfo(
       "Clicked More filters button, waiting for dropdown to appear..."
     );
 
@@ -144,7 +145,7 @@ export async function applyFilter(
       }
     });
 
-    console.log(
+    await dualLogInfo(
       "Selected 'Expedia Collect Payments' and 'Expedia Virtual Card' checkboxes"
     );
     await delay(1000); // Wait for checkboxes to be checked
@@ -168,10 +169,10 @@ export async function applyFilter(
       }
     });
 
-    console.log("Applied filters from dropdown");
+    await dualLogInfo("Applied filters from dropdown");
     await delay(2000);
 
-    console.log("Waiting for data to load...");
+    await dualLogInfo("Waiting for data to load...");
 
     // Wait for the loading indicator to appear
     await page
@@ -179,7 +180,7 @@ export async function applyFilter(
         visible: true,
         timeout: 10000,
       })
-      .catch(() => console.log("Loading indicator did not appear"));
+      .catch(() => dualLogInfo("Loading indicator did not appear"));
 
     // Wait for the loading indicator to disappear
     await page.waitForSelector("td .fds-loader.is-loading.is-visible", {
@@ -187,7 +188,7 @@ export async function applyFilter(
       timeout: 30000,
     });
 
-    console.log("Loading completed, continuing with data processing...");
+    await dualLogInfo("Loading completed, continuing with data processing...");
 
     // Check pause state before data processing
     await scrapingStateManager.waitWhilePaused();
@@ -195,7 +196,7 @@ export async function applyFilter(
       throw new Error("Scraping was stopped before data processing");
     }
 
-    console.log("Starting to process reservation data...");
+    await dualLogInfo("Starting to process reservation data...");
 
     // Wait for the table to be visible
     await page.waitForSelector("table.fds-data-table", {
@@ -271,10 +272,10 @@ export async function applyFilter(
       throw new Error("Scraping was stopped before data scraping");
     }
 
-    console.log("Starting data scraping...");
+    await dualLogInfo("Starting data scraping...");
     await scrapeData(page, expediaId, startDate, endDate, jobId);
   } catch (error: any) {
-    console.error("Error in applyFilter:", error);
+    await dualLogError("Error in applyFilter:", error, { jobId });
     throw error;
   }
 }

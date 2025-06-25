@@ -1,6 +1,7 @@
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
 import { scrapingStateManager } from "../common/scraping-state.js";
+import { dualLogError, dualLogInfo } from "../common/log-helper.js";
 
 export async function propertySearchAndClickReservation(
   page: Page,
@@ -10,6 +11,7 @@ export async function propertySearchAndClickReservation(
     // Check if scraping is paused before starting
     await scrapingStateManager.waitWhilePaused();
     if (!scrapingStateManager.isRunning()) {
+      await dualLogError("Scraping was stopped during property search");
       throw new Error("Scraping was stopped during property search");
     }
 
@@ -23,6 +25,7 @@ export async function propertySearchAndClickReservation(
       // Check pause state before proceeding
       await scrapingStateManager.waitWhilePaused();
       if (!scrapingStateManager.isRunning()) {
+        await dualLogError("Scraping was stopped during property search");
         throw new Error("Scraping was stopped during property search");
       }
 
@@ -32,7 +35,7 @@ export async function propertySearchAndClickReservation(
       );
 
       // Get property ID from query params
-      console.log(`Searching for property ID: ${propertyId}`);
+      await dualLogInfo(`Searching for property ID: ${propertyId}`);
 
       // Type property ID in search
       await page.type(
@@ -47,6 +50,7 @@ export async function propertySearchAndClickReservation(
       // Check pause state before searching
       await scrapingStateManager.waitWhilePaused();
       if (!scrapingStateManager.isRunning()) {
+        await dualLogError("Scraping was stopped during property search");
         throw new Error("Scraping was stopped during property search");
       }
 
@@ -77,7 +81,7 @@ export async function propertySearchAndClickReservation(
         }, String(propertyId));
 
         if (clicked) {
-          console.log(`Found and clicked property with ID: ${propertyId}`);
+          await dualLogInfo(`Found and clicked property with ID: ${propertyId}`);
 
           // Wait for navigation
           await Promise.all([
@@ -88,12 +92,12 @@ export async function propertySearchAndClickReservation(
             delay(8000),
           ]);
 
-          console.log("Successfully navigated to property page");
+          await dualLogInfo("Successfully navigated to property page");
         } else {
           throw new Error(`Could not find property with ID: ${propertyId}`);
         }
       } catch (error: any) {
-        console.error(`Error finding/clicking property: ${error.message}`);
+        await dualLogError(`Error finding/clicking property: ${error.message}`);
         throw error;
       }
     }
@@ -101,11 +105,12 @@ export async function propertySearchAndClickReservation(
     // Check pause state before finding reservations
     await scrapingStateManager.waitWhilePaused();
     if (!scrapingStateManager.isRunning()) {
+      await dualLogError("Scraping was stopped during property search");
       throw new Error("Scraping was stopped during property search");
     }
 
     // Find and click the Reservations link
-    console.log("Looking for Reservations link...");
+    await dualLogInfo("Looking for Reservations link...");
 
     try {
       // Wait for the drawer content to load
@@ -148,13 +153,13 @@ export async function propertySearchAndClickReservation(
         delay(8000),
       ]);
 
-      console.log("Successfully navigated to Reservations page");
+      await dualLogInfo("Successfully navigated to Reservations page");
     } catch (error) {
-      console.error(`Error searching for property ${propertyId}:`, error);
+      await dualLogError(`Error searching for property ${propertyId}:`, error);
       throw error;
     }
   } catch (error: any) {
-    console.error(`Error searching for property ${propertyId}:`, error);
+    await dualLogError(`Error searching for property ${propertyId}:`, error);
     throw error;
   }
 }

@@ -1,30 +1,12 @@
 import dotenv from "dotenv";
 import puppeteer, { Browser, Page } from "puppeteer";
 import { delay } from "../common/delay.js";
-// const chromeExecutable =
-//   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-
+import {
+  dualLogError,
+  dualLogInfo,
+  dualLogWarn,
+} from "../common/log-helper.js";
 dotenv.config();
-
-// const openDevtools = async (page: Page, client: any) => {
-//   // get current frameId
-//   const frameId = (page?.mainFrame() as any)?._id;
-//   console.log("frameId", frameId);
-//   // get URL for devtools from Browser API
-//   const { url: inspectUrl } = await client.send("Page.inspect", {
-//     frameId,
-//   });
-//   // open devtools URL in local chrome
-//   exec(`"${chromeExecutable}" "${inspectUrl}"`, (error: any) => {
-//     if (error) throw new Error("Unable to open devtools: " + error);
-//   });
-//   // wait for devtools ui to load
-//   await delay(5000);
-// };
-
-// const SBR_WS_ENDPOINT = `wss://${process.env.BRIGHT_DATA_USERNAME}:${process.env.BRIGHT_DATA_PASSWORD}@brd.superproxy.io:9222`;
-
-const SBR_WS_ENDPOINT = `wss://${process.env.BRIGHT_DATA_USERNAME}:${process.env.BRIGHT_DATA_PASSWORD}@brd.superproxy.io:9222`;
 
 export async function browserSetup(): Promise<{
   browser: Browser;
@@ -33,48 +15,38 @@ export async function browserSetup(): Promise<{
   let browser: Browser | null = null;
 
   try {
-    browser = await puppeteer.launch({
-      headless: false,
-      defaultViewport: null,
-      args: [
-        "--start-maximized",
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-web-security",
-        "--disable-features=IsolateOrigins,site-per-process",
-        "--disable-blink-features=AutomationControlled",
-        "--disable-extensions",
-        // "--proxy-server=brd.superproxy.io:33335",
-      ],
+    // browser = await puppeteer.launch({
+    //   headless: false,
+    //   defaultViewport: null,
+    //   args: [
+    //     "--start-maximized",
+    //     "--no-sandbox",
+    //     "--disable-setuid-sandbox",
+    //     "--disable-web-security",
+    //     "--disable-features=IsolateOrigins,site-per-process",
+    //     "--disable-blink-features=AutomationControlled",
+    //     "--disable-extensions",
+    //     // "--proxy-server=brd.superproxy.io:33335",
+    //   ],
+    // });
+
+    browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://production-sfo.browserless.io/?token=${process.env.BROWSERLESS_TOKEN}`,
     });
 
-    // browser = await puppeteer.connect({
-    //   browserWSEndpoint:
-    //     "wss://brd-customer-hl_af263bba-zone-expedia_test_browser:vj2iow2h8v8v@brd.superproxy.io:9222",
-    // });
-
-    // browser = await puppeteer.connect({
-    //   browserWSEndpoint:
-    //     "wss://production-sfo.browserless.io/?token=2SXlnLjeZpwR2tV6ab1698bfe680a3959c2c681f06939ee3b",
-    // });
-
-    // browser = await puppeteer.connect({
-    //   browserWSEndpoint:"wss://production-sfo.browserless.io/?token=&record=true",
-    // });
-
     const page: Page = await browser.newPage();
-    // const cdp = await page.createCDPSession();
-    // await (cdp as any).send("Browserless.startRecording");
-    // console.log("Recording started successfully");
+    const cdp = await page.createCDPSession();
+    await (cdp as any).send("Browserless.startRecording");
+    await dualLogInfo("Recording started successfully");
 
-    // // // Wait a bit before generating live URL
-    // await delay(2000);
+    // Wait a bit before generating live URL
+    await delay(2000);
 
-    // // // Generate live URL for user interaction
-    // const { liveURL } = (await (cdp as any).send("Browserless.liveURL", {
-    //   timeout: 600_000,
-    // })) as { liveURL: string };
-    // console.log("Click for live experience:", liveURL);
+    // Generate live URL for user interaction
+    const { liveURL } = (await (cdp as any).send("Browserless.liveURL", {
+      timeout: 600_000,
+    })) as { liveURL: string };
+    await dualLogInfo("Click for live experience:", { liveURL });
 
     // const client = await page.createCDPSession();
     // console.log("client", client);
@@ -114,14 +86,17 @@ export async function browserSetup(): Promise<{
     await page.setDefaultTimeout(60000);
 
     // Navigate to partner central with retry logic
-    console.log("Navigating to Expedia Partner Central...");
+    await dualLogInfo("Navigating to Expedia Partner Central...");
 
     const maxRetries = 3;
     let navigationSuccess = false;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`Navigation attempt ${attempt}/${maxRetries}`);
+        await dualLogInfo(`Navigation attempt ${attempt}/${maxRetries}`, {
+          attempt,
+          maxRetries,
+        });
 
         await page.goto(
           "https://www.expediapartnercentral.com/Account/Logon?signedOff=true",
@@ -138,16 +113,21 @@ export async function browserSetup(): Promise<{
         await page.waitForSelector("body", { timeout: 500000 });
 
         navigationSuccess = true;
-        console.log("Navigation successful!");
+        await dualLogInfo("Navigation successful!", { attempt });
         break;
       } catch (navError: any) {
-        console.log(`Navigation attempt ${attempt} failed:`, navError.message);
+        await dualLogWarn(`Navigation attempt ${attempt} failed:`, {
+          attempt,
+          error: navError.message,
+        });
 
         if (attempt < maxRetries) {
-          console.log("Retrying navigation...");
+          await dualLogInfo("Retrying navigation...", { attempt });
           await delay(2000); // Wait before retry
         } else {
-          console.log("All navigation attempts failed");
+          await dualLogError("All navigation attempts failed", navError, {
+            maxRetries,
+          });
           throw navError;
         }
       }
@@ -159,10 +139,10 @@ export async function browserSetup(): Promise<{
       );
     }
 
-    console.log("Browser setup completed successfully");
+    await dualLogInfo("Browser setup completed successfully");
     return { browser, page };
   } catch (error) {
-    console.error("Browser setup failed:", error);
+    await dualLogError("Browser setup failed:", error);
 
     // Clean up browser if it was created
     if (browser) {
@@ -170,7 +150,7 @@ export async function browserSetup(): Promise<{
         await browser.close();
         // await session.release();
       } catch (closeError) {
-        console.error("Error closing browser:", closeError);
+        await dualLogError("Error closing browser:", closeError);
       }
     }
 

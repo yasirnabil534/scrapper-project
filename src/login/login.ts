@@ -1,5 +1,6 @@
 import { Browser, Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+import { dualLogError, dualLogInfo } from "../common/log-helper.js";
 import { scrapingStateManager } from "../common/scraping-state.js";
 
 async function login(
@@ -11,6 +12,7 @@ async function login(
   // Check if scraping is paused before starting login
   await scrapingStateManager.waitWhilePaused();
   if (!scrapingStateManager.isRunning()) {
+    await dualLogError("Scraping was stopped during login");
     throw new Error("Scraping was stopped during login");
   }
 
@@ -23,11 +25,12 @@ async function login(
   // Check pause state before entering email
   await scrapingStateManager.waitWhilePaused();
   if (!scrapingStateManager.isRunning()) {
+    await dualLogError("Scraping was stopped during login");
     throw new Error("Scraping was stopped during login");
   }
 
   // Type email slowly, character by character
-  console.log("Entering email...");
+  await dualLogInfo("Entering email...");
   for (let char of email) {
     await page.type("#emailControl", char, { delay: 100 });
   }
@@ -36,17 +39,18 @@ async function login(
   await page.click("#continueButton");
 
   // Wait before entering password
-  console.log("Waiting for password page to load...");
+  await dualLogInfo("Waiting for password page to load...");
 
   // Check pause state before password entry
   await scrapingStateManager.waitWhilePaused();
   if (!scrapingStateManager.isRunning()) {
+    await dualLogError("Scraping was stopped during login");
     throw new Error("Scraping was stopped during login");
   }
 
   // Wait for password page to be fully loaded
   try {
-    console.log("Waiting for password page to fully load...");
+    await dualLogInfo("Waiting for password page to fully load...");
 
     // Try to find the password input field with a try-catch to handle both possible selectors
     let passwordInputFound = false;
@@ -73,7 +77,7 @@ async function login(
         });
 
         if (!isInputReady) {
-          console.log("Password input not fully ready, waiting longer...");
+          await dualLogInfo("Password input not fully ready, waiting longer...");
           await delay(2000);
         }
 
@@ -90,7 +94,7 @@ async function login(
         });
         await delay(500);
 
-        console.log("Password page fully loaded, entering password...");
+        await dualLogInfo("Password page fully loaded, entering password...");
 
         // Type password slowly with increased delays
         for (let char of password) {
@@ -99,7 +103,7 @@ async function login(
         }
 
         // Wait longer before clicking submit to ensure password is fully entered
-        console.log("Password entered, waiting before clicking submit...");
+        await dualLogInfo("Password entered, waiting before clicking submit...");
         await delay(5000);
 
         // Verify password was entered correctly
@@ -111,7 +115,7 @@ async function login(
         });
 
         if (enteredPassword.length !== password.length) {
-          console.log(
+          await dualLogError(
             `Password entry issue: expected ${password.length} chars but got ${enteredPassword.length}`
           );
 
@@ -133,11 +137,11 @@ async function login(
         }
 
         // Click the login button
-        console.log("Clicking password continue button...");
+        await dualLogInfo("Clicking password continue button...");
         await page.click("#password-continue");
       }
     } catch (error: any) {
-      console.log(
+      await dualLogError(
         "Could not find #password-input, trying #passwordControl instead:",
         error.message
       );
@@ -153,11 +157,11 @@ async function login(
         });
 
         if (!passwordControlExists) {
-          console.log(
+          await dualLogError(
             "Neither #password-input nor #passwordControl found. Checking page content..."
           );
           const pageContent = await page.content();
-          console.log("Page title: " + (await page.title()));
+          await dualLogInfo("Page title: " + (await page.title()));
           throw new Error("Password input field not found on the page");
         }
 
@@ -173,7 +177,7 @@ async function login(
         });
 
         if (!isInputReady) {
-          console.log("Password input not fully ready, waiting longer...");
+          await dualLogInfo("Password input not fully ready, waiting longer...");
           await delay(2000);
         }
 
@@ -190,7 +194,7 @@ async function login(
         });
         await delay(500);
 
-        console.log("Password page fully loaded, entering password...");
+        await dualLogInfo("Password page fully loaded, entering password...");
 
         // Type password slowly with increased delays
         for (let char of password) {
@@ -199,7 +203,7 @@ async function login(
         }
 
         // Wait longer before clicking submit to ensure password is fully entered
-        console.log("Password entered, waiting before clicking submit...");
+        await dualLogInfo("Password entered, waiting before clicking submit...");
         await delay(5000);
 
         // Verify password was entered correctly
@@ -211,7 +215,7 @@ async function login(
         });
 
         if (enteredPassword.length !== password.length) {
-          console.log(
+          await dualLogError(
             `Password entry issue: expected ${password.length} chars but got ${enteredPassword.length}`
           );
 
@@ -233,15 +237,15 @@ async function login(
         }
 
         // Click the login button
-        console.log("Clicking password continue button...");
+        await dualLogInfo("Clicking password continue button...");
         await page.click("#signInButton");
       } catch (error: any) {
-        console.log("Error handling password input:", error.message);
+        await dualLogError("Error handling password input:", error.message);
         throw error;
       }
     }
   } catch (error: any) {
-    console.log("Error during password entry:", error.message);
+    await dualLogError("Error during password entry:", error.message);
     throw error;
   }
 }
