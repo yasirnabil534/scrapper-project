@@ -3,6 +3,7 @@ import fs from "fs";
 import { google } from "googleapis";
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+import { dualLogError, dualLogInfo } from "../common/log-helper.js";
 import { oauth2Client } from "../config/google-config.js";
 
 dotenv.config();
@@ -28,10 +29,10 @@ async function loadCredentials() {
     }
 
     oauth2Client.setCredentials(token);
-    console.log("Gmail credentials loaded successfully");
+    await dualLogInfo("Gmail credentials loaded successfully");
     return true;
   } catch (error) {
-    console.error("Error loading credentials:", error);
+    await dualLogError("Error loading credentials:", error);
     return false;
   }
 }
@@ -53,7 +54,7 @@ async function getVerificationCode() {
     });
 
     if (!res.data.messages) {
-      console.log("No new emails found.");
+      await dualLogInfo("No new emails found.");
       return null;
     }
 
@@ -68,26 +69,26 @@ async function getVerificationCode() {
       });
 
       const body = email.data.snippet || "";
-      console.log("Email body:", body);
+      await dualLogInfo("Email body:", body);
       const codeMatch = body.match(/\b\d{6,10}\b/);
-      console.log("Code match:", codeMatch);
+      await dualLogInfo("Code match:", codeMatch);
 
       if (codeMatch) {
         return codeMatch[0];
       }
     }
 
-    console.log("No verification code found in recent emails.");
+    await dualLogInfo("No verification code found in recent emails.");
     return null;
   } catch (error: any) {
-    console.log("Error fetching emails:", error.message);
+    await dualLogError("Error fetching emails:", error.message);
     return null;
   }
 }
 
 async function handleOtpVerification(page: Page) {
   // Wait for verification code page using the correct selector
-  console.log("Waiting for verification page...");
+  await dualLogInfo("Waiting for verification page...");
   await page.waitForSelector('input[name="passcode-input"]', {
     visible: true,
     timeout: 60000,
@@ -105,21 +106,21 @@ async function handleOtpVerification(page: Page) {
     return null;
   });
 
-  console.log(`Current contact from page: ${currentContact}`);
-  console.log(`Our contact: ${ourContact}`);
+  await dualLogInfo(`Current contact from page: ${currentContact}`);
+  await dualLogInfo(`Our contact: ${ourContact}`);
 
   // Compare last three digits
   const currentLastThree = currentContact ? currentContact.slice(-3) : "";
   const ourLastThree = ourContact.slice(-3);
 
-  console.log(`Current contact last 3 digits: ${currentLastThree}`);
-  console.log(`Our contact last 3 digits: ${ourLastThree}`);
+  await dualLogInfo(`Current contact last 3 digits: ${currentLastThree}`);
+  await dualLogInfo(`Our contact last 3 digits: ${ourLastThree}`);
 
   if (currentLastThree === ourLastThree) {
-    console.log("Phone numbers match! Using email verification flow...");
+    await dualLogInfo("Phone numbers match! Using email verification flow...");
 
     // Add delay before fetching verification code
-    console.log("Waiting for verification email...");
+    await dualLogInfo("Waiting for verification email...");
     await delay(15000); // Wait 15 seconds for email to arrive
 
     // Get verification code
@@ -127,7 +128,7 @@ async function handleOtpVerification(page: Page) {
     if (!code) {
       throw new Error("Failed to get verification code from email");
     }
-    console.log("Got verification code:", code);
+    await dualLogInfo("Got verification code:", code);
 
     // Enter verification code using the correct selector
     await page.type('input[name="passcode-input"]', code, { delay: 100 });
@@ -153,9 +154,9 @@ async function handleOtpVerification(page: Page) {
 
     // Click the button
     await verifyButtonHandle.click();
-    console.log("Clicked the verify button successfully!");
+    await dualLogInfo("Clicked the verify button successfully!");
   } else {
-    console.log(
+    await dualLogInfo(
       `Phone numbers don't match! Looking for fallback verification options...`
     );
 
@@ -173,14 +174,14 @@ async function handleOtpVerification(page: Page) {
         throw new Error("No fallback verification options found");
       }
 
-      console.log("Found fallbacks section, clicking dropdown arrow...");
+      await dualLogInfo("Found fallbacks section, clicking dropdown arrow...");
 
       // Click the dropdown arrow to expand options
       await page.click('[data-testid="fallbacks-toggle"]');
       await delay(2000);
 
       // Wait for the dropdown to fully expand and items to be visible
-      console.log("Waiting for fallback items to be visible...");
+      await dualLogInfo("Waiting for fallback items to be visible...");
       await page.waitForSelector('[data-testid="fallback-item"]', {
         visible: true,
         timeout: 10000,
@@ -189,7 +190,9 @@ async function handleOtpVerification(page: Page) {
       // Additional wait to ensure all content is loaded
       await delay(3000);
 
-      console.log("Dropdown opened, looking for matching phone number...");
+      await dualLogInfo(
+        "Dropdown opened, looking for matching phone number..."
+      );
 
       // First, let's check if the elements exist at all
       const elementsExist = await page.evaluate(() => {
@@ -227,7 +230,7 @@ async function handleOtpVerification(page: Page) {
         }
       });
 
-      console.log(
+      await dualLogInfo(
         "Elements check result:",
         JSON.stringify(elementsExist, null, 2)
       );
@@ -245,15 +248,15 @@ async function handleOtpVerification(page: Page) {
       }
 
       // Now look for phone numbers in the fallback options
-      const matchingOption = await page.evaluate((ourLastThree) => {
+      const matchingOption = await page.evaluate(async (ourLastThree) => {
         try {
-          console.log("Looking for phone ending with:", ourLastThree);
+          await dualLogInfo("Looking for phone ending with:", ourLastThree);
 
           const fallbackItems = document.querySelectorAll(
             '[data-testid="fallback-item"]'
           );
 
-          console.log("Found fallback items:", fallbackItems.length);
+          await dualLogInfo("Found fallback items:", fallbackItems.length);
 
           for (let i = 0; i < fallbackItems.length; i++) {
             const item = fallbackItems[i];
@@ -266,22 +269,15 @@ async function handleOtpVerification(page: Page) {
               const phoneNumber = phoneHeader.textContent?.trim() || "";
               const linkText = textLink.textContent?.trim() || "";
 
-              console.log("Found item:", phoneNumber, linkText);
+              await dualLogInfo("Found item:", phoneNumber);
 
               // Check if this is a phone number (contains asterisks and digits)
               if (phoneNumber.includes("*") && linkText === "Send me a text") {
                 // Extract last 3 digits from the phone number
                 const phoneLastThree = phoneNumber.slice(-3);
 
-                console.log(
-                  "Phone last 3 digits:",
-                  phoneLastThree,
-                  "Expected:",
-                  ourLastThree
-                );
-
                 if (phoneLastThree === ourLastThree) {
-                  console.log("Found matching phone number!");
+                  await dualLogInfo("Found matching phone number!");
                   return {
                     found: true,
                     phoneNumber: phoneNumber,
@@ -292,10 +288,10 @@ async function handleOtpVerification(page: Page) {
             }
           }
 
-          console.log("No matching phone number found");
+          await dualLogInfo("No matching phone number found");
           return { found: false, phoneNumber: null };
         } catch (error) {
-          console.log(
+          await dualLogError(
             "Error in page.evaluate:",
             error instanceof Error ? error.message : "Unknown error"
           );
@@ -306,11 +302,11 @@ async function handleOtpVerification(page: Page) {
         }
       }, ourLastThree);
 
-      console.log(`Matching option result:`, matchingOption);
+      await dualLogInfo(`Matching option result:`, matchingOption);
 
       if (!matchingOption) {
         // If page.evaluate returned undefined, try a simpler approach
-        console.log(
+        await dualLogInfo(
           "page.evaluate returned undefined, trying alternative approach..."
         );
 
@@ -351,7 +347,7 @@ async function handleOtpVerification(page: Page) {
         }, ourLastThree);
 
         if (alternativeClick.success) {
-          console.log(
+          await dualLogInfo(
             `Alternative approach succeeded: clicked 'Send me a text' for ${alternativeClick.phoneNumber}`
           );
           await delay(3000);
@@ -362,7 +358,7 @@ async function handleOtpVerification(page: Page) {
             timeout: 30000,
           });
 
-          console.log(
+          await dualLogInfo(
             "SMS verification page loaded, trying to get verification code from email..."
           );
           await delay(15000);
@@ -371,7 +367,7 @@ async function handleOtpVerification(page: Page) {
           if (!code) {
             throw new Error("Failed to get verification code from email");
           }
-          console.log("Got verification code:", code);
+          await dualLogInfo("Got verification code:", code);
 
           await page.type('input[name="passcode-input"]', code, { delay: 100 });
           await delay(1000);
@@ -392,7 +388,7 @@ async function handleOtpVerification(page: Page) {
           }
 
           await verifyButtonHandle.click();
-          console.log("Clicked the verify button successfully!");
+          await dualLogInfo("Clicked the verify button successfully!");
         } else {
           throw new Error(
             `Both primary and alternative approaches failed: ${alternativeClick.error}`
@@ -401,7 +397,7 @@ async function handleOtpVerification(page: Page) {
       } else if (matchingOption.error) {
         throw new Error(`Error in page evaluation: ${matchingOption.error}`);
       } else if (matchingOption.found) {
-        console.log(
+        await dualLogInfo(
           `Found matching phone number: ${matchingOption.phoneNumber}`
         );
 
@@ -448,7 +444,7 @@ async function handleOtpVerification(page: Page) {
           );
         }
 
-        console.log(
+        await dualLogInfo(
           `Clicked 'Send me a text' for phone: ${clickResult.phoneNumber}`
         );
         await delay(3000);
@@ -459,7 +455,7 @@ async function handleOtpVerification(page: Page) {
           timeout: 30000,
         });
 
-        console.log(
+        await dualLogInfo(
           "SMS verification page loaded, trying to get verification code from email..."
         );
 

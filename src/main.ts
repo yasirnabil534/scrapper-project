@@ -1,12 +1,18 @@
 import dotenv from "dotenv";
 import { browserSetup } from "./browser-setup/browser.js";
 import { delay } from "./common/delay.js";
+import { decryptPassword } from "./common/encription.js";
+import {
+  dualLogError,
+  dualLogInfo,
+  finalizeJobLogging,
+  initializeJobLogging,
+} from "./common/log-helper.js";
 import { scrapingStateManager } from "./common/scraping-state.js";
 import { splitDateRange } from "./date-split/date-split.js";
 import login from "./login/login.js";
 import handleOtpVerification from "./otp-verification/otp-verification.js";
 import { propertySearchAndClickReservation } from "./property-search/property-search.js";
-import { decryptPassword } from "./common/encription.js";
 
 dotenv.config();
 
@@ -18,7 +24,20 @@ async function main(
   user_email?: string,
   user_password?: string
 ): Promise<void> {
+  let jobLogger = null;
+
   try {
+    // Initialize job logging if jobId is provided
+    if (jobId) {
+      jobLogger = initializeJobLogging(jobId);
+      await dualLogInfo(`Starting job ${jobId}`, {
+        expediaId,
+        startDate,
+        endDate,
+        user_email: user_email ? "[REDACTED]" : undefined,
+      });
+    }
+
     // const client = new Steel({
     //   steelAPIKey: process.env.STEEL_API_KEY, // Optional
     // });
@@ -33,18 +52,24 @@ async function main(
     // console.log(session);
     try {
       // Step 1: Setup browser and navigate to login page
-      console.log("Setting up browser...");
+      await dualLogInfo("Setting up browser...");
+
       const { browser, page } = await browserSetup();
-      console.log("Browser setup complete. Page is ready at login screen.");
+
+      await dualLogInfo(
+        "Browser setup complete. Page is ready at login screen."
+      );
 
       // Check if scraping is paused and wait if needed
       await scrapingStateManager.waitWhilePaused();
 
       // Check if scraping was stopped while paused
       if (!scrapingStateManager.isRunning()) {
-        console.log("Scraping was stopped, exiting...");
+        await dualLogInfo("Scraping was stopped, exiting...");
         await browser.close();
-        // await client.sessions.release(session.id);
+        if (jobId) {
+          await finalizeJobLogging("failed");
+        }
         return;
       }
 
@@ -53,26 +78,32 @@ async function main(
       const password = decryptPassword(user_password);
 
       if (email && password) {
-        console.log("Login credentials found, performing automatic login...");
+        await dualLogInfo(
+          "Login credentials found, performing automatic login..."
+        );
 
         try {
           // Check pause state before login
           await scrapingStateManager.waitWhilePaused();
           if (!scrapingStateManager.isRunning()) {
-            console.log("Scraping was stopped, exiting...");
+            await dualLogInfo("Scraping was stopped, exiting...");
             await browser.close();
-            // await client.sessions.release(session.id);
+            if (jobId) {
+              await finalizeJobLogging("failed");
+            }
             return;
           }
 
           await login(browser, page, email, password);
-          console.log("Login completed successfully! User is now logged in.");
+          await dualLogInfo(
+            "Login completed successfully! User is now logged in."
+          );
 
           // Add your post-login automation here
-          console.log("Ready for scraping operations...");
+          await dualLogInfo("Ready for scraping operations...");
           await delay(10000);
         } catch (loginError) {
-          console.error("Login failed:", loginError);
+          await dualLogError("Login failed:", loginError);
           throw loginError;
         }
 
@@ -80,16 +111,18 @@ async function main(
           // Check pause state before OTP verification
           await scrapingStateManager.waitWhilePaused();
           if (!scrapingStateManager.isRunning()) {
-            console.log("Scraping was stopped, exiting...");
+            await dualLogInfo("Scraping was stopped, exiting...");
             await browser.close();
-            // await client.sessions.release(session.id);
+            if (jobId) {
+              await finalizeJobLogging("failed");
+            }
             return;
           }
 
           await handleOtpVerification(page);
-          console.log("OTP verification completed successfully!");
+          await dualLogInfo("OTP verification completed successfully!");
         } catch (error: any) {
-          console.error("OTP verification failed:", error);
+          await dualLogError("OTP verification failed:", error);
           // Continue even if OTP fails as it might not be required
         }
 
@@ -99,25 +132,31 @@ async function main(
             // Check pause state before property search
             await scrapingStateManager.waitWhilePaused();
             if (!scrapingStateManager.isRunning()) {
-              console.log("Scraping was stopped, exiting...");
+              await dualLogInfo("Scraping was stopped, exiting...");
               await browser.close();
-              // await client.sessions.release(session.id);
+              if (jobId) {
+                await finalizeJobLogging("failed");
+              }
               return;
             }
 
-            console.log(
+            await dualLogInfo(
               `Starting property search for Expedia ID: ${expediaId}`
             );
+
             await propertySearchAndClickReservation(page, expediaId);
-            console.log(
+
+            await dualLogInfo(
               "Property search and reservation completed successfully!"
             );
           } catch (error: any) {
-            console.error("Property search failed:", error);
+            await dualLogError("Property search failed:", error);
             throw error;
           }
         } else {
-          console.log("No expedia ID provided, skipping property search.");
+          await dualLogInfo(
+            "No expedia ID provided, skipping property search."
+          );
         }
 
         try {
@@ -125,37 +164,54 @@ async function main(
             // Check pause state before date splitting
             await scrapingStateManager.waitWhilePaused();
             if (!scrapingStateManager.isRunning()) {
-              console.log("Scraping was stopped, exiting...");
+              await dualLogInfo("Scraping was stopped, exiting...");
               await browser.close();
-              // await client.sessions.release(session.id);
+              if (jobId) {
+                await finalizeJobLogging("failed");
+              }
               return;
             }
 
             await splitDateRange(page, startDate, endDate, expediaId, jobId);
           } else {
-            console.log(
+            await dualLogInfo(
               "No start date or end date, or expedia ID provided, skipping date selection."
             );
           }
-          console.log("Date selection completed successfully!");
+          await dualLogInfo("Date selection completed successfully!");
         } catch (error: any) {
-          console.error("Date selection failed:", error);
+          await dualLogError("Date selection failed:", error);
           throw error;
         }
       } else {
-        console.log("No login credentials provided.");
+        await dualLogInfo("No login credentials provided.");
       }
 
       // Close browser when done
       await browser.close();
       // await client.sessions.release(session.id);
-      console.log("Browser closed successfully.");
+      await dualLogInfo("Browser closed successfully.");
+
+      // Finalize logging with success status
+      if (jobId) {
+        await finalizeJobLogging("success");
+      }
     } catch (error) {
-      console.error("Main function error:", error);
-      // await client.sessions.release(session.id);
+      await dualLogError("Main function error:", error);
+
+      // Finalize logging with failed status
+      if (jobId) {
+        await finalizeJobLogging("failed");
+      }
+      throw error;
     }
   } catch (error) {
-    console.error("Main function error:", error);
+    await dualLogError("Main function error:", error);
+
+    // Finalize logging with failed status
+    if (jobId) {
+      await finalizeJobLogging("failed");
+    }
     throw error;
   }
 }

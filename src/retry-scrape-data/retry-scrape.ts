@@ -3,6 +3,7 @@ import { delay } from "../common/delay.js";
 import { scrapingStateManager } from "../common/scraping-state.js";
 import { scrapeData } from "../scrape-data/scrape-data.js";
 
+
 export async function retryScrape(
   page: Page,
   propertyId: string,

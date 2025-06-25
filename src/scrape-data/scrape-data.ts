@@ -1,5 +1,10 @@
 import { Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+import {
+  dualLogError,
+  dualLogInfo,
+  dualLogWarn,
+} from "../common/log-helper.js";
 import { scrapingStateManager } from "../common/scraping-state.js";
 import { CardInfo, PaymentInfo } from "../models/job-item.model.js";
 import { CreateJobItemData, jobService } from "../services/job.service.js";
@@ -15,8 +20,9 @@ export async function scrapeData(
   jobId?: string
 ) {
   try {
-    console.log(
-      `Starting scrapeData with jobId: ${jobId}, expediaId: ${expediaId}`
+    await dualLogInfo(
+      `Starting scrapeData with jobId: ${jobId}, expediaId: ${expediaId}`,
+      { jobId, expediaId, start_date, end_date }
     );
 
     // Get property_id from job for database storage
@@ -26,16 +32,22 @@ export async function scrapeData(
         const job = await jobService.getJobById(jobId);
         if (job && job.property_id) {
           propertyIdForDb = job.property_id.toString();
-          console.log(
-            `Using property_id: ${propertyIdForDb} for database storage`
+          await dualLogInfo(
+            `Using property_id: ${propertyIdForDb} for database storage`,
+            { propertyIdForDb, jobId }
           );
         } else {
-          console.warn(
-            `Could not get property_id from job ${jobId}, will skip database storage`
+          await dualLogWarn(
+            `Could not get property_id from job ${jobId}, will skip database storage`,
+            { jobId }
           );
         }
       } catch (error) {
-        console.error(`Error getting property_id from job ${jobId}:`, error);
+        await dualLogError(
+          `Error getting property_id from job ${jobId}:`,
+          error,
+          { jobId }
+        );
       }
     }
 
@@ -60,7 +72,10 @@ export async function scrapeData(
     };
 
     const totalResults = await getTotalResults();
-    console.log(`Total reservations to fetch: ${totalResults}`);
+    await dualLogInfo(`Total reservations to fetch: ${totalResults}`, {
+      totalResults,
+      jobId,
+    });
 
     // Update progress with total count
     scrapingStateManager.updateProgress(undefined, undefined, 0, totalResults);
@@ -76,11 +91,14 @@ export async function scrapeData(
 
         // Check if scraping was stopped while paused
         if (!scrapingStateManager.isRunning()) {
-          console.log("Scraping was stopped, exiting...");
+          await dualLogInfo("Scraping was stopped, exiting...", { jobId });
           break;
         }
 
-        console.log(`Processing page ${currentPage}...`);
+        await dualLogInfo(`Processing page ${currentPage}...`, {
+          currentPage,
+          jobId,
+        });
 
         // Update progress with current page
         scrapingStateManager.updateProgress(
@@ -106,7 +124,7 @@ export async function scrapeData(
 
           // Check if scraping was stopped while paused
           if (!scrapingStateManager.isRunning()) {
-            console.log("Scraping was stopped, exiting...");
+            await dualLogInfo("Scraping was stopped, exiting...", { jobId });
             return;
           }
 
@@ -162,14 +180,17 @@ export async function scrapeData(
 
             // Skip if no reservation ID
             if (!basicData.reservationId) {
-              console.log("No reservation ID found, skipping...");
+              await dualLogInfo("No reservation ID found, skipping...", {
+                jobId,
+              });
               continue;
             }
 
             // Check if we've already processed this reservation in memory
             if (processedReservationIds.has(basicData.reservationId)) {
-              console.log(
-                `Skipping duplicate reservation in memory: ${basicData.reservationId}`
+              await dualLogInfo(
+                `Skipping duplicate reservation in memory: ${basicData.reservationId}`,
+                { jobId }
               );
               continue;
             }
@@ -183,8 +204,9 @@ export async function scrapeData(
                 basicData.reservationId
               ))
             ) {
-              console.log(
-                `Skipping duplicate reservation in database: ${basicData.reservationId}`
+              await dualLogInfo(
+                `Skipping duplicate reservation in database: ${basicData.reservationId}`,
+                { jobId }
               );
               processedReservationIds.add(basicData.reservationId);
               processedCount++;
@@ -203,8 +225,9 @@ export async function scrapeData(
               totalResults
             );
 
-            console.log(
-              `Processing reservation ${processedCount}/${totalResults}: ${basicData.reservationId}`
+            await dualLogInfo(
+              `Processing reservation ${processedCount}/${totalResults}: ${basicData.reservationId}`,
+              { jobId }
             );
 
             // Get card details
@@ -212,7 +235,10 @@ export async function scrapeData(
               "td.guestName button.guestNameLink"
             );
             if (!guestNameButton) {
-              console.log("Guest name button not found, skipping reservation");
+              await dualLogInfo(
+                "Guest name button not found, skipping reservation",
+                { jobId }
+              );
 
               // Save basic data to database even without card info (only if we have valid database info)
               if (jobId && propertyIdForDb) {
@@ -248,8 +274,9 @@ export async function scrapeData(
                   // Wait a bit for content to load
                   await delay(2000);
                 } catch (error) {
-                  console.log(
-                    "Dialog did not appear within timeout, skipping to next reservation"
+                  await dualLogInfo(
+                    "Dialog did not appear within timeout, skipping to next reservation",
+                    { jobId }
                   );
 
                   // Save basic data to database even without detailed info (only if we have valid database info)
@@ -285,8 +312,9 @@ export async function scrapeData(
                   );
 
                   if (seeCardActivityButton) {
-                    console.log(
-                      "Found 'See card activity' button, clicking it in a new tab..."
+                    await dualLogInfo(
+                      "Found 'See card activity' button, clicking it in a new tab...",
+                      { jobId }
                     );
 
                     // Get href or onclick URL from the button
@@ -316,8 +344,9 @@ export async function scrapeData(
                     });
 
                     if (buttonUrl) {
-                      console.log(
-                        `Opening card activity URL in new tab: ${buttonUrl}`
+                      await dualLogInfo(
+                        `Opening card activity URL in new tab: ${buttonUrl}`,
+                        { jobId }
                       );
 
                       // Get browser from page
@@ -331,7 +360,9 @@ export async function scrapeData(
                           timeout: 30000,
                         });
 
-                        console.log("New tab opened for card activity");
+                        await dualLogInfo("New tab opened for card activity", {
+                          jobId,
+                        });
                         await delay(5000); // Give more time for the page to fully load
 
                         // Scrape the remaining balance
@@ -371,8 +402,9 @@ export async function scrapeData(
                             : "N/A";
                         });
 
-                        console.log(
-                          `Scraped remaining balance: ${remainingBalance}`
+                        await dualLogInfo(
+                          `Scraped remaining balance: ${remainingBalance}`,
+                          { jobId }
                         );
 
                         // Take screenshot for debugging if needed
@@ -386,25 +418,29 @@ export async function scrapeData(
                         if (newPage) {
                           await newPage.close();
                         }
-                        console.log(
+                        await dualLogError(
                           "got error on see card activity tab",
-                          error.message
+                          error.message,
+                          { jobId }
                         );
                       }
-                      console.log("Closed card activity tab");
+                      await dualLogInfo("Closed card activity tab", { jobId });
                     } else {
-                      console.log(
-                        "Could not capture URL from 'See card activity' button, skipping"
+                      await dualLogInfo(
+                        "Could not capture URL from 'See card activity' button, skipping",
+                        { jobId }
                       );
                     }
                   } else {
-                    console.log(
-                      "'See card activity' button not found, skipping"
+                    await dualLogInfo(
+                      "'See card activity' button not found, skipping",
+                      { jobId }
                     );
                   }
                 } catch (error: any) {
-                  console.log(
-                    `Error processing card activity: ${error.message}`
+                  await dualLogError(
+                    `Error processing card activity: ${error.message}`,
+                    { jobId }
                   );
                 }
 
@@ -643,9 +679,8 @@ export async function scrapeData(
                           total_guest_payment: 0,
                           cancellation_fee: 0,
                           total_payout: 0,
-                          amount_to_charge_or_refund: parsePaymentAmount(
-                            remainingBalance
-                          ),
+                          amount_to_charge_or_refund:
+                            parsePaymentAmount(remainingBalance),
                         };
                       }
 
@@ -671,14 +706,16 @@ export async function scrapeData(
                       }
 
                       if (remainingAmountToCharge) {
-                        console.log(
-                          `Found Remaining amount to charge: ${remainingAmountToCharge}`
+                        await dualLogInfo(
+                          `Found Remaining amount to charge: ${remainingAmountToCharge}`,
+                          { jobId }
                         );
                       }
 
                       if (amountToRefund) {
-                        console.log(
-                          `Found Amount to refund: ${amountToRefund}`
+                        await dualLogInfo(
+                          `Found Amount to refund: ${amountToRefund}`,
+                          { jobId }
                         );
                       }
                     }
@@ -708,7 +745,10 @@ export async function scrapeData(
                     await delay(1500);
                   }
                 } catch (e) {
-                  console.log("Warning: Could not close dialog normally");
+                  await dualLogInfo(
+                    "Warning: Could not close dialog normally",
+                    { jobId }
+                  );
                 }
 
                 // Save the complete reservation data to database (only if we have valid database info)
@@ -724,11 +764,12 @@ export async function scrapeData(
 
                 break; // Exit retry loop on success
               } catch (retryError) {
-                console.log(
+                await dualLogError(
                   `Retry ${i + 1} failed for reservation ${
                     basicData.reservationId
                   }:`,
-                  retryError
+                  retryError,
+                  { jobId }
                 );
                 if (i === 2) {
                   // On final retry failure, still save basic data (only if we have valid database info)
@@ -745,7 +786,10 @@ export async function scrapeData(
               }
             }
           } catch (error: any) {
-            console.error(`Error processing reservation: ${error.message}`);
+            await dualLogError(
+              `Error processing reservation: ${error.message}`,
+              { jobId }
+            );
             // Still save what we have to database (only if we have valid database info)
             if (jobId && propertyIdForDb && basicData?.reservationId) {
               await saveReservationToDatabase(
@@ -762,22 +806,25 @@ export async function scrapeData(
         // Check for next page
         hasMore = await hasNextPage();
         if (hasMore) {
-          console.log("Navigating to next page...");
+          await dualLogInfo("Navigating to next page...", { jobId });
           await page.click(".fds-pagination-button.next button");
           await delay(3000);
           currentPage++;
         }
       } catch (pageError: any) {
-        console.error(`Error processing page ${currentPage}:`, pageError);
+        await dualLogError(`Error processing page ${currentPage}:`, pageError, {
+          jobId,
+        });
         hasMore = false;
       }
     }
 
-    console.log(
-      `Scraping completed. Processed ${processedCount} reservations.`
+    await dualLogInfo(
+      `Scraping completed. Processed ${processedCount} reservations.`,
+      { jobId }
     );
   } catch (error) {
-    console.error("Error in scrapeData:", error);
+    await dualLogError("Error in scrapeData:", error, { jobId });
     throw error;
   }
 }
@@ -865,18 +912,25 @@ async function saveReservationToDatabase(
     };
 
     const savedItem = await jobService.createJobItem(jobItemData);
-    console.log(`✅ Saved reservation ${basicData.reservationId} to database`);
+    await dualLogInfo(
+      `✅ Saved reservation ${basicData.reservationId} to database`,
+      { jobId }
+    );
     return savedItem;
   } catch (dbError: any) {
-    console.error(
+    await dualLogError(
       `❌ Failed to save reservation ${
         basicData?.reservationId || "unknown"
       } to database:`,
-      dbError.message
+      dbError.message,
+      { jobId }
     );
 
     // Log additional context for debugging
-    console.error(`Debug info - jobId: ${jobId}, propertyId: ${propertyId}`);
+    await dualLogError(
+      `Debug info - jobId: ${jobId}, propertyId: ${propertyId}`,
+      { jobId }
+    );
 
     // Don't rethrow the error to prevent stopping the entire scraping process
     // Just log it and continue with the next reservation

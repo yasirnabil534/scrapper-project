@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import { Page } from "puppeteer";
 import { applyFilter } from "../apply-filter/apply-filter.js";
+import { dualLogError, dualLogInfo } from "../common/log-helper.js";
 import { scrapingStateManager } from "../common/scraping-state.js";
 import { splitDateRangeIntoChunks } from "./helper.js";
 dotenv.config();
@@ -22,7 +23,7 @@ export async function splitDateRange(
     }
 
     // Wait for date filters to be visible
-    console.log("Waiting for date filters...");
+    await dualLogInfo("Waiting for date filters...");
     await page.waitForSelector('input[type="radio"][name="dateTypeFilter"]', {
       visible: true,
       timeout: 80000,
@@ -30,7 +31,7 @@ export async function splitDateRange(
 
     // Get the current URL
     const currentUrl = page.url();
-    console.log(`Current tab URL: ${currentUrl}`);
+    await dualLogInfo(`Current tab URL: ${currentUrl}`);
 
     // Generate date chunks
     const dateChunks = splitDateRangeIntoChunks(
@@ -39,7 +40,11 @@ export async function splitDateRange(
       CHUNK_SIZE
     );
 
-    console.log(`Processing ${dateChunks.length} date chunks...`);
+    await dualLogInfo(`Processing ${dateChunks.length} date chunks...`, {
+      totalChunks: dateChunks.length,
+      chunkSize: CHUNK_SIZE,
+      jobId,
+    });
 
     for (let i = 0; i < dateChunks.length; i++) {
       const chunk = dateChunks[i];
@@ -47,19 +52,20 @@ export async function splitDateRange(
       // Check if scraping is paused before each chunk
       await scrapingStateManager.waitWhilePaused();
       if (!scrapingStateManager.isRunning()) {
-        console.log("Scraping was stopped during date chunk processing");
+        await dualLogInfo("Scraping was stopped during date chunk processing");
         return;
       }
 
-      console.log(
+      await dualLogInfo(
         `Processing chunk ${i + 1}/${dateChunks.length}: ${chunk.start} to ${
           chunk.end
-        }`
+        }`,
+        { chunkIndex: i + 1, totalChunks: dateChunks.length, chunk, jobId }
       );
       await applyFilter(page, chunk.start, chunk.end, expediaId, jobId);
     }
   } catch (error) {
-    console.error("Error in setDateRange:", error);
+    await dualLogError("Error in setDateRange:", error, { jobId });
     throw error;
   }
 }

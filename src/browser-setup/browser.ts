@@ -1,6 +1,11 @@
 import dotenv from "dotenv";
 import puppeteer, { Browser, Page } from "puppeteer";
 import { delay } from "../common/delay.js";
+import {
+  dualLogError,
+  dualLogInfo,
+  dualLogWarn,
+} from "../common/log-helper.js";
 dotenv.config();
 
 export async function browserSetup(): Promise<{
@@ -26,22 +31,22 @@ export async function browserSetup(): Promise<{
     // });
 
     browser = await puppeteer.connect({
-      browserWSEndpoint:`wss://production-sfo.browserless.io/?token=${process.env.BROWSERLESS_TOKEN}`,
+      browserWSEndpoint: `wss://production-sfo.browserless.io/?token=${process.env.BROWSERLESS_TOKEN}`,
     });
 
     const page: Page = await browser.newPage();
     const cdp = await page.createCDPSession();
     await (cdp as any).send("Browserless.startRecording");
-    console.log("Recording started successfully");
+    await dualLogInfo("Recording started successfully");
 
-    // // Wait a bit before generating live URL
+    // Wait a bit before generating live URL
     await delay(2000);
 
-    // // Generate live URL for user interaction
+    // Generate live URL for user interaction
     const { liveURL } = (await (cdp as any).send("Browserless.liveURL", {
       timeout: 600_000,
     })) as { liveURL: string };
-    console.log("Click for live experience:", liveURL);
+    await dualLogInfo("Click for live experience:", { liveURL });
 
     // const client = await page.createCDPSession();
     // console.log("client", client);
@@ -81,14 +86,17 @@ export async function browserSetup(): Promise<{
     await page.setDefaultTimeout(60000);
 
     // Navigate to partner central with retry logic
-    console.log("Navigating to Expedia Partner Central...");
+    await dualLogInfo("Navigating to Expedia Partner Central...");
 
     const maxRetries = 3;
     let navigationSuccess = false;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`Navigation attempt ${attempt}/${maxRetries}`);
+        await dualLogInfo(`Navigation attempt ${attempt}/${maxRetries}`, {
+          attempt,
+          maxRetries,
+        });
 
         await page.goto(
           "https://www.expediapartnercentral.com/Account/Logon?signedOff=true",
@@ -105,16 +113,21 @@ export async function browserSetup(): Promise<{
         await page.waitForSelector("body", { timeout: 500000 });
 
         navigationSuccess = true;
-        console.log("Navigation successful!");
+        await dualLogInfo("Navigation successful!", { attempt });
         break;
       } catch (navError: any) {
-        console.log(`Navigation attempt ${attempt} failed:`, navError.message);
+        await dualLogWarn(`Navigation attempt ${attempt} failed:`, {
+          attempt,
+          error: navError.message,
+        });
 
         if (attempt < maxRetries) {
-          console.log("Retrying navigation...");
+          await dualLogInfo("Retrying navigation...", { attempt });
           await delay(2000); // Wait before retry
         } else {
-          console.log("All navigation attempts failed");
+          await dualLogError("All navigation attempts failed", navError, {
+            maxRetries,
+          });
           throw navError;
         }
       }
@@ -126,10 +139,10 @@ export async function browserSetup(): Promise<{
       );
     }
 
-    console.log("Browser setup completed successfully");
+    await dualLogInfo("Browser setup completed successfully");
     return { browser, page };
   } catch (error) {
-    console.error("Browser setup failed:", error);
+    await dualLogError("Browser setup failed:", error);
 
     // Clean up browser if it was created
     if (browser) {
@@ -137,7 +150,7 @@ export async function browserSetup(): Promise<{
         await browser.close();
         // await session.release();
       } catch (closeError) {
-        console.error("Error closing browser:", closeError);
+        await dualLogError("Error closing browser:", closeError);
       }
     }
 
